@@ -17,16 +17,18 @@ var db *gorm.DB
 func main() {
 	initDatabase()
 	r := chi.NewRouter()
+
 	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "qweqweqwe", http.StatusOK)
+		renderAdminTemplate(w, "landing_page", nil)
 	})
 
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
 
-		r.Get("/signin", AdminSignUp)
+		r.Get("/signin", AdminSignIn)
 		r.Post("/signin", AdminSignIn)
 
 		r.Get("/signup", AdminSignUp)

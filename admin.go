@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"log"
 	"net/http"
@@ -9,28 +10,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var adminTemplates = parseAdminTemplates()
-
-func parseAdminTemplates() *template.Template {
+func renderAdminTemplate(w http.ResponseWriter, tmpl string, data any) {
 	templatesDir := "templates/admin"
 
-	layoutPattern := filepath.Join(templatesDir, "layout.html")
-	contentPattern := filepath.Join(templatesDir, "*.html")
-	templates, err := template.ParseFiles(layoutPattern)
-
+	templates, err := template.ParseFiles(
+		filepath.Join(templatesDir, tmpl+".html"),
+		filepath.Join(templatesDir, "layout.html"),
+	)
 	if err != nil {
-		log.Fatalf("Error parsing admin templates: %v", err)
-	}
-	templates, err = templates.ParseGlob(contentPattern)
-	if err != nil {
-		log.Fatalf("Error parsing content templates: %v", err)
+		log.Fatalf("Error parsing templates: %v", err)
 	}
 
-	return templates
-}
-
-func renderAdminTemplate(w http.ResponseWriter, tmpl string, data interface{}) {
-	err := adminTemplates.ExecuteTemplate(w, tmpl+".html", data)
+	err = templates.ExecuteTemplate(w, tmpl+".html", data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -65,7 +56,14 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Create a new token and store it in a cookie
-		token := newAdmin.ID // Replace this with your token generation logic
+		token, err := generateAuthToken()
+		if err != nil {
+			http.Error(w, "Error creating account", http.StatusInternalServerError)
+			return
+		}
+		newAdmin.Token = token
+		db.Save(&newAdmin)
+
 		http.SetCookie(w, &http.Cookie{
 			Name:  "admin_token",
 			Value: token,
@@ -73,12 +71,18 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 		})
 
 		// Redirect to the admin sign-in page after successful sign-up
-		http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	}
 }
 
 func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
+		existingToken := r.Context().Value("admin_user").(*AdminUser)
+		if existingToken != nil {
+			http.Redirect(w, r, "/admin", http.StatusSeeOther)
+			return
+		}
+
 		renderAdminTemplate(w, "signin", nil)
 
 	} else {
@@ -100,8 +104,20 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Here you should set up the session for the authenticated user.
-		// This is just a placeholder for session management.
+		// Generate a new token for the session
+		token, err := generateAuthToken()
+		if err != nil {
+			http.Error(w, "Error signing in", http.StatusInternalServerError)
+			return
+		}
+		admin.Token = token
+		db.Save(&admin)
+
+		http.SetCookie(w, &http.Cookie{
+			Name:  "admin_token",
+			Value: token,
+			Path:  "/",
+		})
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	}
@@ -120,12 +136,36 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
-	// TODO: Implement the admin authentication middleware
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Perform authentication check here
+		cookie, err := r.Cookie("admin_token")
+		if err != nil {
+			if r.URL.Path == "/admin/signin" || r.URL.Path == "/admin/signup" {
+				next.ServeHTTP(w, r)
+				return
+			} else {
 
-		// Pass through to the next handler if authentication is successful
-		next.ServeHTTP(w, r)
+				http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+				return
+			}
+		}
+
+		// Validate the token and retrieve the corresponding admin user
+		var admin AdminUser
+		result := db.Where("token = ?", cookie.Value).First(&admin)
+		if result.Error != nil {
+			http.Error(w, "Unauthorized: "+result.Error.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		// Store the admin user in the context
+		ctx := context.WithValue(r.Context(), "admin_user", &admin)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 
+}
+func generateAuthToken() (string, error) {
+	// Implement the token generation logic here
+	// This is a placeholder for demonstration purposes
+	// In a real-world scenario, you would use a secure method to generate the token
+	return "secure-random-token", nil
 }

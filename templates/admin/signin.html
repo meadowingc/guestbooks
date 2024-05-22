@@ -1,3 +1,7 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Sign In{{end}}
+
 {{define "content"}}
 <h1>Admin Sign In</h1>
 <form method="post">
@@ -7,4 +11,8 @@
     <input type="password" id="password" name="password" required>
     <button type="submit">Sign In</button>
 </form>
+
+<div>
+    Don't have an account? Sign up <a href="/admin/signup">here</a>.
+</div>
 {{end}}

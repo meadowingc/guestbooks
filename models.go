@@ -26,6 +26,7 @@ type Message struct {
 type AdminUser struct {
 	gorm.Model
 	Username     string         `gorm:"uniqueIndex"`
-	PasswordHash datatypes.JSON // Password hash should be stored securely
+	PasswordHash datatypes.JSON `gorm:"type:json"`
+	Token        string         `gorm:"index;unique"`
 	Guestbooks   []Guestbook    `gorm:"foreignKey:AdminUserID"`
 }
