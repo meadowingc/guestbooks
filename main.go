@@ -19,6 +19,10 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "qweqweqwe", http.StatusOK)
+	})
+
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
 
