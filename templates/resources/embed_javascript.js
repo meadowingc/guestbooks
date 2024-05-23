@@ -34,50 +34,55 @@
         return response.json();
       })
       .then(function (messages) {
-        messages.sort(function (a, b) {
-          return new Date(b.CreatedAt) - new Date(a.CreatedAt);
-        });
-
-        messagesContainer.innerHTML = "";
-        messages.forEach(function (message) {
-          var messageContainer = document.createElement("div");
-
-          var messageHeader = document.createElement("p");
-          var boldElement = document.createElement("b");
-
-          // add name with website (if present)
-          if (message.Website) {
-            var link = document.createElement("a");
-            link.href = message.Website ? message.Website : "#";
-            link.textContent = message.Name;
-            boldElement.appendChild(link);
-          } else {
-            var textNode = document.createTextNode(message.Name);
-            boldElement.appendChild(textNode);
-          }
-          messageHeader.appendChild(boldElement);
-
-          // add date
-          var createdAt = new Date(message.CreatedAt);
-          var formattedDate = createdAt.toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
+        if (messages.length === 0) {
+          messagesContainer.innerHTML = "<p>There are no messages on this guestbook.</p>";
+        } else {
+          messages.sort(function (a, b) {
+            return new Date(b.CreatedAt) - new Date(a.CreatedAt);
           });
 
-          var dateElement = document.createElement("small");
-          dateElement.textContent = " - " + formattedDate;
-          messageHeader.appendChild(dateElement);
+          messagesContainer.innerHTML = "";
+          messages.forEach(function (message) {
+            var messageContainer = document.createElement("div");
 
-          // add actual quote
-          var messageBody = document.createElement("blockquote");
-          messageBody.textContent = message.Text;
+            var messageHeader = document.createElement("p");
+            var boldElement = document.createElement("b");
 
-          messageContainer.appendChild(messageHeader);
-          messageContainer.appendChild(messageBody);
+            // add name with website (if present)
+            if (message.Website) {
+              var link = document.createElement("a");
+              link.href = message.Website ? message.Website : "#";
+              link.textContent = message.Name;
+              link.target = "_blank";
+              boldElement.appendChild(link);
+            } else {
+              var textNode = document.createTextNode(message.Name);
+              boldElement.appendChild(textNode);
+            }
+            messageHeader.appendChild(boldElement);
 
-          messagesContainer.appendChild(messageContainer);
-        });
+            // add date
+            var createdAt = new Date(message.CreatedAt);
+            var formattedDate = createdAt.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            });
+
+            var dateElement = document.createElement("small");
+            dateElement.textContent = " - " + formattedDate;
+            messageHeader.appendChild(dateElement);
+
+            // add actual quote
+            var messageBody = document.createElement("blockquote");
+            messageBody.textContent = message.Text;
+
+            messageContainer.appendChild(messageHeader);
+            messageContainer.appendChild(messageBody);
+
+            messagesContainer.appendChild(messageContainer);
+          });
+        }
       })
       .catch(function (error) {
         console.error("Error fetching messages:", error);
