@@ -7,7 +7,8 @@ import (
 
 	"html/template"
 
-	"codeberg.org/meadowingc/guestbook/constants"
+	"guestbook/constants"
+
 	"github.com/go-chi/chi/v5"
 	"gorm.io/gorm"
 )

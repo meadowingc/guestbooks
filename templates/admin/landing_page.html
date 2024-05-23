@@ -1,7 +1,27 @@
 {{template "layout.html" .}}
 
-{{define "title"}}Home Page{{end}}
+{{define "title"}}Home{{end}}
+
+{{define "nav-right"}}
+<a href="/admin">Dashboard</a>
+{{end}}
 
 {{define "content"}}
-<p>This is very much a WIP project, but the idea is that it will allow you to create and embed one (or more) guestbooks into your site!</p>
+<p>
+    This is very much a WIP project, but the idea is that it will allow you to create and embed one (or more) guestbooks
+    into your site!
+</p>
+<p>
+    The platform mostly works and should be fairly stable. So even though it's missing some polish you can already <a
+        href="/admin/signin">Sign in</a>, create a guestbook, and share it with others!
+</p>
+<p>
+    You'd be doing me a favor if you
+    decide to give this a try and <a href="https://codeberg.org/meadowingc/guestbooks/issues">report any issues</a> you
+    find 😊
+</p>
+<br />
+<p>
+    This service free. I don't plan on adding any paid plan in the forseeable future.
+</p>
 {{end}}

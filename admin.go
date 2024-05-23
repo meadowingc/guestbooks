@@ -14,6 +14,11 @@ import (
 	"gorm.io/gorm"
 )
 
+type AdminCookieName string
+
+const AdminUserCookieName = AdminCookieName("admin_user")
+const AdminTokenCookieName = AdminCookieName("admin_token")
+
 func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data interface{}) {
 	templateData := struct {
 		CurrentUser *AdminUser
@@ -25,22 +30,17 @@ func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, da
 
 	templatesDir := "templates/admin"
 
-	templates, err := template.ParseFiles(
-		filepath.Join(templatesDir, tmpl+".html"),
-		filepath.Join(templatesDir, "layout.html"),
-	)
-	if err != nil {
-		log.Fatalf("Error parsing templates: %v", err)
-	}
+	baseTemplate := template.Must(template.ParseFiles(filepath.Join(templatesDir, "layout.html")))
+	actualTemplate := template.Must(baseTemplate.ParseFiles(filepath.Join(templatesDir, tmpl+".html")))
 
-	err = templates.ExecuteTemplate(w, tmpl+".html", templateData)
+	err := actualTemplate.Execute(w, templateData)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func getSignedInAdminUserOrNil(r *http.Request) *AdminUser {
-	adminUser, _ := r.Context().Value("admin_user").(*AdminUser)
+	adminUser, _ := r.Context().Value(AdminUserCookieName).(*AdminUser)
 	return adminUser
 }
 
@@ -66,27 +66,37 @@ func generateAuthToken() (string, error) {
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/admin/signin" && r.URL.Path != "/admin/signup" {
-			cookie, err := r.Cookie("admin_token")
-			if err != nil || cookie.Value == "" {
-				http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
-				return
-			}
-
-			// Validate the token and retrieve the corresponding admin user
-			var admin AdminUser
-			result := db.Where("token = ?", cookie.Value).First(&admin)
-			if result.Error != nil {
-				http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
-				return
-			}
-
-			// Store the admin user in the context
-			ctx := context.WithValue(r.Context(), "admin_user", &admin)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		} else {
+		// if logout then just continue
+		if r.URL.Path == "/admin/logout" {
 			next.ServeHTTP(w, r)
+			return
 		}
+
+		// try to set admin user into context
+		cookie, err := r.Cookie(string(AdminTokenCookieName))
+		if err != nil || cookie.Value == "" {
+			if r.URL.Path != "/admin/signin" && r.URL.Path != "/admin/signup" {
+				http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+				return
+			} else {
+				// then we're already trying to signin or signup, so just let it
+				// continue
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Validate the token and retrieve the corresponding admin user
+		var admin AdminUser
+		result := db.Where("token = ?", cookie.Value).First(&admin)
+		if result.Error != nil {
+			http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+			return
+		}
+
+		// Store the admin user in the context
+		ctx := context.WithValue(r.Context(), AdminUserCookieName, &admin)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
@@ -124,11 +134,12 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error signing in", http.StatusInternalServerError)
 			return
 		}
+
 		admin.Token = token
 		db.Save(&admin)
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  "admin_token",
+			Name:  string(AdminTokenCookieName),
 			Value: token,
 			Path:  "/",
 		})
@@ -175,7 +186,7 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 		db.Save(&newAdmin)
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  "admin_token",
+			Name:  string(AdminTokenCookieName),
 			Value: token,
 			Path:  "/",
 		})
@@ -187,7 +198,7 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 
 func AdminLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   "admin_token",
+		Name:   string(AdminTokenCookieName),
 		Value:  "",
 		Path:   "/",
 		MaxAge: -1,

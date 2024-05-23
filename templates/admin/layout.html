@@ -32,8 +32,16 @@
             margin-bottom: 0em;
         }
 
-        .build-version {
+        .open-source-notice {
             margin-top: 0;
+        }
+
+        .container {
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 1em;
+            margin-bottom: 1em;
+            padding-left: 0;
+            padding-right: 0;
         }
     </style>
 </head>
@@ -45,6 +53,7 @@
                 <div class="brand"><a href="/admin">💌 Guestbooks</a></div>
             </div>
             <div class="nav-links nav-right">
+                {{block "nav-right" .}}
                 {{if .CurrentUser}}
                 <div class="row">
                     <div class="col">Welcome, {{.CurrentUser.Username}}</div>
@@ -58,6 +67,7 @@
                 <a href="/admin/signin">Sign In</a>
                 <a href="/admin/signup">Sign Up</a>
                 {{end}}
+                {{end}}
             </div>
         </nav>
         <main>
@@ -66,9 +76,13 @@
     </div>
 
     <footer class="footer">
-        <p class="with-love"><small>Made with ❤️ by <a target="_blank"
-                    href="https://meadow.bearblog.dev/">Meadow</a></small></p>
-        <!-- <div class="build-version"><small><i>Version: __commitHash__</i></small></div> -->
+        <div class="open-source-notice">
+            <small><i>This project is <a href="https://codeberg.org/meadowingc/guestbooks">open
+                        source</a>! Any contributions are welcome.</i></small>
+        </div>
+        <p class="with-love">
+            <small>Made with ❤️ by <a target="_blank" href="https://meadow.bearblog.dev/">Meadow</a></small>
+        </p>
     </footer>
 </body>
 

@@ -16,7 +16,9 @@
     <h2>Embed with an iframe</h2>
     <p>Copy and paste the following code into your website's HTML to embed this guestbook form:</p>
     <pre>
+<code class="language-html" data-lang="html">
 &lt;iframe src="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}" width="300" height="500" frameborder="0">&lt;/iframe>
+</code>
 </pre>
 </div>
 
@@ -27,6 +29,7 @@
         edit the HTML as you see fit but don't change the <code>name</code> attribute of the <code>input</code> tags!
     </p>
     <pre>
+<code class="language-html" data-lang="html">
 &lt;script async src="https://guestbooks.meadowing.club/resources/js/embed_script/{{.Data.ID}}/script.js">&lt;/script> 
 &lt;div id="guestbooks___guestbook-form-container">
     &lt;form id="guestbooks___guestbook-form" action="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}/submit" method="post">
@@ -50,7 +53,7 @@
 &lt;hr style="margin: 1em 0;"/>
 &lt;h3 id="guestbooks___guestbook-messages-header">Messages&lt;/h3>
 &lt;div id="guestbooks___guestbook-messages-container">&lt;/div>  
+</code>
 </pre>
 </div>
-
 {{end}}

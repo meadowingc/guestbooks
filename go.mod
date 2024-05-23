@@ -1,4 +1,4 @@
-module codeberg.org/meadowingc/guestbook
+module guestbook
 
 go 1.22
 

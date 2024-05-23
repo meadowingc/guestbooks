@@ -40,6 +40,10 @@ func main() {
 		renderAdminTemplate(w, r, "landing_page", nil)
 	})
 
+	r.Get("/terms-and-conditions", func(w http.ResponseWriter, r *http.Request) {
+		renderAdminTemplate(w, r, "terms_and_conditions", nil)
+	})
+
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
 
