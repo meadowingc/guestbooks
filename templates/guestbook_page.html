@@ -15,30 +15,31 @@
 
         <main>
             <h1>Guestbook for {{.WebsiteURL}}</h1>
+
             <form action="/guestbook/{{.ID}}/submit" method="post">
-                <label for="name">Name:</label>
-                <input type="text" id="name" name="name" required>
-                <label for="text">Message:</label>
-                <textarea id="text" name="text" required></textarea>
-                <label for="website">Website (optional):</label>
-                <input type="url" id="website" name="website">
+                <input placeholder="Name" type="text" id="name" name="name" required>
+                <input placeholder="Website (optional)" type="url" id="website" name="website">
+                <br />
+                <textarea placeholder="Message..." id="text" name="text" style="width: 100%;" required></textarea>
+                <br />
                 <input type="submit" value="Submit">
             </form>
 
             <h2>Messages</h2>
             {{if .Messages}}
-            <ul>
-                {{range .Messages}}
-                <li>
+            {{range .Messages}}
+            <p>
+                <strong>
+                    <!-- <p><b><a href="https://meadowing.club">something</a></b></p> -->
                     {{if .Website}}
-                    <strong><a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a>:</strong>
-                    {{.Text}}
+                    <a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a>
                     {{else}}
-                    <strong>{{.Name}}:</strong> {{.Text}}
+                    {{.Name}}
                     {{end}}
-                </li>
-                {{end}}
-            </ul>
+                </strong> - <small>{{.CreatedAt | formatDate}}</small>
+            </p>
+            <blockquote>{{.Text}}</blockquote>
+            {{end}}
             {{else}}
             <p>No messages yet. Be the first to leave a message!</p>
             {{end}}

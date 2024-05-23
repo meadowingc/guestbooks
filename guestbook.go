@@ -3,28 +3,46 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"html/template"
-	"path/filepath"
 
 	"codeberg.org/meadowingc/guestbook/constants"
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
 var guestbookTemplate *template.Template = loadGuestbookTemplate()
 
+func formatDate(t time.Time) string {
+	return t.Format("Jan 2, 2006")
+}
+
 func loadGuestbookTemplate() *template.Template {
-	templates, err := template.ParseFiles(filepath.Join("templates", "guestbook_page.html"))
+	tmpl, err := template.New("guestbook_page.html").Funcs(template.FuncMap{
+		"formatDate": formatDate,
+	}).ParseFiles("templates/guestbook_page.html")
+
 	if err != nil {
-		log.Fatalf("Error parsing guestbook page template: %v", err)
+		log.Fatal(err)
 	}
-	return templates
+
+	return tmpl
+
+	// templates, err := template.ParseFiles(filepath.Join("templates", "guestbook_page.html"))
+	// if err != nil {
+	// 	log.Fatalf("Error parsing guestbook page template: %v", err)
+	// }
+	// return templates
+
 }
 
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 	var guestbook Guestbook
-	result := db.Preload("Messages").First(&guestbook, "id = ?", guestbookID)
+	result := db.Preload("Messages", func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at desc")
+	}).First(&guestbook, "id = ?", guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
