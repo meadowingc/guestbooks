@@ -51,6 +51,7 @@
             var textNode = document.createTextNode(message.Name);
             boldElement.appendChild(textNode);
           }
+          messageHeader.appendChild(boldElement);
 
           // add date
           var createdAt = new Date(message.CreatedAt);
@@ -61,14 +62,13 @@
           });
 
           var dateElement = document.createElement("small");
-          dateElement.textContent = formattedDate;
-          boldElement.appendChild(dateElement);
+          dateElement.textContent = " - " + formattedDate;
+          messageHeader.appendChild(dateElement);
 
           // add actual quote
           var messageBody = document.createElement("blockquote");
           messageBody.textContent = message.Text;
 
-          messageHeader.appendChild(boldElement);
           messageContainer.appendChild(messageHeader);
           messageContainer.appendChild(messageBody);
 
