@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"html/template"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/cors"
 
@@ -70,6 +72,29 @@ func main() {
 	r.Route("/guestbook", func(r chi.Router) {
 		r.Get("/{guestbookID}", GuestbookPage)
 		r.Post("/{guestbookID}/submit", GuestbookSubmit)
+	})
+
+	r.Route("/resources", func(r chi.Router) {
+		r.Route("/js", func(r chi.Router) {
+			r.Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
+				guestbookID := chi.URLParam(r, "guestbookID")
+				template, err := template.ParseFiles("templates/resources/embed_javascript.js")
+				if err != nil {
+					log.Fatalf("Error parsing guestbook page template: %v", err)
+				}
+
+				templateData := struct {
+					GuestbookID string
+				}{
+					GuestbookID: guestbookID,
+				}
+
+				w.Header().Set("Cache-Control", "public, max-age=259200") // 3 days
+				w.Header().Set("Expires", time.Now().Add(72*time.Hour).Format(http.TimeFormat))
+
+				template.Execute(w, templateData)
+			})
+		})
 	})
 
 	r.Route("/api", func(r chi.Router) {
