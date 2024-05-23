@@ -24,19 +24,36 @@
     <h2>Embed with JavaScript</h2>
     <p>Copy and paste the following code into your website's HTML where you to embed this guestbook form:</p>
     <pre>
+&lt;script async src="https://guestbooks.meadowing.club/resources/js/embed_script/{{.Data.ID}}/script.js">&lt;/script> 
 &lt;div id="guestbooks___guestbook-form-container">
     &lt;form id="guestbooks___guestbook-form" action="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}/submit" method="post">
-        &lt;label for="name">Name:&lt;/label>
-        &lt;input type="text" id="name" name="name" required>
-        &lt;label for="text">Message:&lt;/label>
-        &lt;textarea id="text" name="text" required>&lt;/textarea>
-        &lt;label for="website">Website (optional):&lt;/label>
-        &lt;input type="url" id="website" name="website">
+        &lt;div class="guestbooks___label-container">
+            &lt;label for="name">Name:&lt;/label>
+        &lt;/div>            
+        &lt;div class="guestbooks___input-container">
+            &lt;input type="text" id="name" name="name" required>
+        &lt;/div>
+        &lt;div class="guestbooks___label-container">
+            &lt;label for="website">Website (optional):&lt;/label>
+        &lt;/div>            
+        &lt;div class="guestbooks___input-container">
+            &lt;input type="url" id="website" name="website">
+        &lt;/div>
+        &lt;br/>
+        &lt;div class="guestbooks___label-container">
+            &lt;label for="text">Message:&lt;/label>
+        &lt;/div>            
+        &lt;div class="guestbooks___input-container">
+            &lt;textarea id="text" name="text" style="width: 100%;" required>&lt;/textarea>
+        &lt;/div>
         &lt;input type="submit" value="Submit">
     &lt;/form>
-&lt;/div>     
+&lt;/div>
+&lt;div id="guestbooks___guestbook-made-with" style="text-align: right;">
+    &lt;small>Lovingly made with &lt;a href="https://guestbooks.meadowing.club">Guestbooks&lt;/a>&lt;/small>
+&lt;/div>  
+&lt;h3 id="guestbooks___guestbook-messages-header">Messages&lt;/h3>
 &lt;div id="guestbooks___guestbook-messages-container">&lt;/div>  
-&lt;script async src="https://guestbooks.meadowing.club/resources/js/embed_script/{{.Data.ID}}/script.js">&lt;/script> 
 </pre>
 </div>
 

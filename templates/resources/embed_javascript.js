@@ -34,27 +34,46 @@
         return response.json();
       })
       .then(function (messages) {
-        var messagesList = document.createElement("ul");
+        messagesContainer.innerHTML = "";
         messages.forEach(function (message) {
-          var listItem = document.createElement("li");
-          var messageContent;
+          var messageContainer = document.createElement("div");
+
+          var messageHeader = document.createElement("p");
+          var boldElement = document.createElement("b");
+
+          // add name with website (if present)
           if (message.Website) {
             var link = document.createElement("a");
-            link.href = message.Website;
+            link.href = message.Website ? message.Website : "#";
             link.textContent = message.Name;
-            messageContent = document.createTextNode(": " + message.Text);
-            listItem.appendChild(link);
-            listItem.appendChild(messageContent);
+            boldElement.appendChild(link);
           } else {
-            messageContent = document.createTextNode(
-              message.Name + ": " + message.Text
-            );
-            listItem.appendChild(messageContent);
+            var textNode = document.createTextNode(message.Name);
+            boldElement.appendChild(textNode);
           }
-          messagesList.appendChild(listItem);
+
+          // add date
+          var createdAt = new Date(message.CreatedAt);
+          var formattedDate = createdAt.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+
+          var dateElement = document.createElement("small");
+          dateElement.textContent = formattedDate;
+          boldElement.appendChild(dateElement);
+
+          // add actual quote
+          var messageBody = document.createElement("blockquote");
+          messageBody.textContent = message.Text;
+
+          messageHeader.appendChild(boldElement);
+          messageContainer.appendChild(messageHeader);
+          messageContainer.appendChild(messageBody);
+
+          messagesContainer.appendChild(messageContainer);
         });
-        messagesContainer.innerHTML = "";
-        messagesContainer.appendChild(messagesList);
       })
       .catch(function (error) {
         console.error("Error fetching messages:", error);

@@ -216,6 +216,12 @@ func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
 	renderAdminTemplate(w, r, "show_guestbook", guestbook)
 }
 
@@ -229,6 +235,12 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 	result := db.First(&guestbook, guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
 		return
 	}
 
@@ -251,8 +263,21 @@ func PostAdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 
 func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
+
 	var guestbook Guestbook
-	result := db.Delete(&guestbook, guestbookID)
+	result := db.First(&guestbook, guestbookID)
+	if result.Error != nil {
+		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	result = db.Delete(&guestbook, guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Error deleting guestbook", http.StatusInternalServerError)
 		return
@@ -270,6 +295,12 @@ func AdminEditGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
 	renderAdminTemplate(w, r, "create_edit_guestbook", guestbook)
 }
 
@@ -281,6 +312,12 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	result := db.First(&guestbook, guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
 		return
 	}
 
@@ -306,6 +343,19 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		var guestbook Guestbook
+		result = db.First(&guestbook, message.GuestbookID)
+		if result.Error != nil {
+			http.Error(w, "Guestbook not found", http.StatusNotFound)
+			return
+		}
+
+		currentUser := getSignedInAdminOrFail(r)
+		if guestbook.AdminUserID != currentUser.ID {
+			http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+			return
+		}
+
 		renderAdminTemplate(w, r, "edit_message", message)
 	} else if r.Method == "POST" {
 		name := r.FormValue("name")
@@ -323,9 +373,23 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		var guestbook Guestbook
+		result = db.First(&guestbook, message.GuestbookID)
+		if result.Error != nil {
+			http.Error(w, "Guestbook not found", http.StatusNotFound)
+			return
+		}
+
+		currentUser := getSignedInAdminOrFail(r)
+		if guestbook.AdminUserID != currentUser.ID {
+			http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+			return
+		}
+
 		message.Name = name
 		message.Text = text
 		message.Website = websitePtr
+
 		result = db.Save(&message)
 		if result.Error != nil {
 			http.Error(w, "Error updating message", http.StatusInternalServerError)
@@ -341,7 +405,26 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	messageID := chi.URLParam(r, "messageID")
 
 	var message Message
-	result := db.Delete(&message, messageID)
+	result := db.First(&message, guestbookID)
+	if result.Error != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	var guestbook Guestbook
+	result = db.First(&guestbook, message.GuestbookID)
+	if result.Error != nil {
+		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	result = db.Delete(&message, messageID)
 	if result.Error != nil {
 		http.Error(w, "Error deleting message", http.StatusInternalServerError)
 		return
