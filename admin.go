@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data interface{}) {
@@ -209,8 +210,11 @@ func AdminGuestbookList(w http.ResponseWriter, r *http.Request) {
 
 func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
+
 	var guestbook Guestbook
-	result := db.Preload("Messages").First(&guestbook, guestbookID)
+	result := db.Preload("Messages", func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at desc")
+	}).First(&guestbook, "id = ?", guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
@@ -404,15 +408,8 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 	messageID := chi.URLParam(r, "messageID")
 
-	var message Message
-	result := db.First(&message, guestbookID)
-	if result.Error != nil {
-		http.Error(w, "Message not found", http.StatusNotFound)
-		return
-	}
-
 	var guestbook Guestbook
-	result = db.First(&guestbook, message.GuestbookID)
+	result := db.First(&guestbook, guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
@@ -421,6 +418,13 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	currentUser := getSignedInAdminOrFail(r)
 	if guestbook.AdminUserID != currentUser.ID {
 		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	var message Message
+	result = db.First(&message, messageID)
+	if result.Error != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
 

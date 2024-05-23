@@ -28,13 +28,6 @@ func loadGuestbookTemplate() *template.Template {
 	}
 
 	return tmpl
-
-	// templates, err := template.ParseFiles(filepath.Join("templates", "guestbook_page.html"))
-	// if err != nil {
-	// 	log.Fatalf("Error parsing guestbook page template: %v", err)
-	// }
-	// return templates
-
 }
 
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
