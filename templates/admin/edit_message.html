@@ -1,7 +1,16 @@
 {{template "layout.html" .}}
 
-{{define "title"}}Edit Guestbook Page{{end}}
+{{define "title"}}Edit Message{{end}}
 
 {{define "content"}}
 <h1>Edit Message</h1>
+<form action="/admin/guestbook/{{.Data.GuestbookID}}/message/{{.Data.ID}}/edit" method="post">
+    <label for="name">Name:</label>
+    <input type="text" id="name" name="name" value="{{.Data.Name}}" required>
+    <label for="text">Message:</label>
+    <textarea id="text" name="text" required>{{.Data.Text}}</textarea>
+    <label for="website">Website (optional):</label>
+    <input type="url" id="website" name="website" value="{{.Data.Website}}">
+    <input type="submit" value="Update">
+</form>
 {{end}}

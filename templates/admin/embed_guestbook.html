@@ -1,0 +1,104 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Embedding Instructions{{end}}
+
+{{define "content"}}
+<p>
+    There are two ways to embed a Guestbook into your site. The easiest way is
+    using an <code>iframe</code>, but it doesn't allow you to personalize the
+    style in any way. If you want more control then you can use JavaScript to
+    create the guestbook form and populate the messages for you, but it's up to
+    you to style the form.
+</p>
+
+
+<div class="embed-instructions">
+    <h2>Embed with an iframe</h2>
+    <p>Copy and paste the following code into your website's HTML to embed this guestbook form:</p>
+    <pre>
+&lt;iframe src="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}" width="300" height="500" frameborder="0">&lt;/iframe>
+</pre>
+</div>
+
+<div class="embed-instructions">
+    <h2>Embed with JavaScript</h2>
+    <p>Copy and paste the following code into your website's HTML where you to embed this guestbook form:</p>
+    <pre>
+&lt;div id="guestbook-container">
+    &lt;form action="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}/submit" method="post">
+        &lt;label for="name">Name:&lt;/label>
+        &lt;input type="text" id="name" name="name" required>
+        &lt;label for="text">Message:&lt;/label>
+        &lt;textarea id="text" name="text" required>&lt;/textarea>
+        &lt;label for="website">Website (optional):&lt;/label>
+        &lt;input type="url" id="website" name="website">
+        &lt;input type="submit" value="Submit">
+    &lt;/form>
+&lt;/div>        
+&lt;script>
+    (function () {
+        var form = document.getElementById('guestbook-form');
+        var messagesContainer = document.getElementById('guestbook-messages');
+
+        form.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            var formData = new FormData(form);
+            fetch(form.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(function() {
+                form.reset();
+                loadMessages();
+            })
+            .catch(function(error) {
+                console.error('Error:', error);
+            });
+        });
+
+        function loadMessages() {
+            var apiUrl = 'https://guestbooks.meadowing.club/api/v1/get-guestbook-messages/{{.Data.ID}}';
+            fetch(apiUrl)
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(messages) {
+                    var messagesList = document.createElement('ul');
+                    messages.forEach(function(message) {
+                        var listItem = document.createElement('li');
+                        var messageContent;
+                        if (message.Website) {
+                            var link = document.createElement('a');
+                            link.href = message.Website;
+                            link.textContent = message.Name;
+                            messageContent = document.createTextNode(': ' + message.Text);
+                            listItem.appendChild(link);
+                            listItem.appendChild(messageContent);
+                        } else {
+                            messageContent = document.createTextNode(message.Name + ': ' + message.Text);
+                            listItem.appendChild(messageContent);
+                        }
+                        messagesList.appendChild(listItem);
+                    });
+                    messagesContainer.innerHTML = '';
+                    messagesContainer.appendChild(messagesList);
+                })
+                .catch(function(error) {
+                    console.error('Error fetching messages:', error);
+                });
+        }
+
+        loadMessages();
+    })();
+&lt;/script>
+</pre>
+</div>
+
+{{end}}

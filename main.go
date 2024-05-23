@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/go-chi/cors"
 
 	"gorm.io/gorm"
 
@@ -18,15 +21,28 @@ func main() {
 	initDatabase()
 	r := chi.NewRouter()
 
+	CORSMiddleware := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	})
+
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(CORSMiddleware.Handler)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		renderAdminTemplate(w, "landing_page", nil)
+		renderAdminTemplate(w, r, "landing_page", nil)
 	})
 
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
+
+		r.Get("/guestbook/new", GetAdminCreateGuestbook)
+		r.Post("/guestbook/new", PostAdminCreateGuestbook)
 
 		r.Get("/signin", AdminSignIn)
 		r.Post("/signin", AdminSignIn)
@@ -34,16 +50,42 @@ func main() {
 		r.Get("/signup", AdminSignUp)
 		r.Post("/signup", AdminSignUp)
 
-		r.Route("/{websiteURL}", func(r chi.Router) {
-			r.Get("/", AdminManageGuestbook)
-			r.Post("/edit/{messageID}", AdminEditMessage)
-			r.Post("/delete/{messageID}", AdminDeleteMessage)
+		r.Post("/logout", AdminLogout)
+
+		r.Route("/guestbook/{guestbookID}", func(r chi.Router) {
+			r.Get("/", AdminShowGuestbook)
+			r.Get("/embed", AdminEmbedGuestbook)
+			r.Get("/edit", AdminEditGuestbook)
+			r.Post("/edit", AdminUpdateGuestbook)
+			r.Post("/delete", AdminDeleteGuestbook)
+
+			r.Route("/message/{messageID}", func(r chi.Router) {
+				r.Get("/edit", AdminEditMessage)
+				r.Post("/edit", AdminEditMessage)
+				r.Post("/delete", AdminDeleteMessage)
+			})
 		})
 	})
 
 	r.Route("/guestbook", func(r chi.Router) {
-		r.Get("/{websiteURL}", GuestbookForm)
-		r.Post("/{websiteURL}", GuestbookSubmit)
+		r.Get("/{guestbookID}", GuestbookPage)
+		r.Post("/{guestbookID}/submit", GuestbookSubmit)
+	})
+
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/v1", func(r chi.Router) {
+			r.Get("/get-guestbook-messages/{guestbookID}", func(w http.ResponseWriter, r *http.Request) {
+				guestbookID := chi.URLParam(r, "guestbookID")
+				var messages []Message
+				result := db.Where("guestbook_id = ?", guestbookID).Find(&messages)
+				if result.Error != nil {
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(messages)
+			})
+		})
 	})
 
 	const portNum = ":6235"

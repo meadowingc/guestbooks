@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/chota@latest">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💌</text></svg>">
+    <title>Guestbook - {{.WebsiteURL}}</title>
+</head>
+
+<body>
+    <div class="container">
+
+        <main>
+            <h1>Guestbook for {{.WebsiteURL}}</h1>
+            <form action="/guestbook/{{.ID}}/submit" method="post">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+                <label for="text">Message:</label>
+                <textarea id="text" name="text" required></textarea>
+                <label for="website">Website (optional):</label>
+                <input type="url" id="website" name="website">
+                <input type="submit" value="Submit">
+            </form>
+
+            <h2>Messages</h2>
+            {{if .Messages}}
+            <ul>
+                {{range .Messages}}
+                <li>
+                    {{if .Website}}
+                    <strong><a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a>:</strong>
+                    {{.Text}}
+                    {{else}}
+                    <strong>{{.Name}}:</strong> {{.Text}}
+                    {{end}}
+                </li>
+                {{end}}
+            </ul>
+            {{else}}
+            <p>No messages yet. Be the first to leave a message!</p>
+            {{end}}
+        </main>
+    </div>
+</body>
+
+</html>

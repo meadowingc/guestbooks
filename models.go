@@ -18,6 +18,7 @@ type Message struct {
 	gorm.Model
 	Name        string
 	Text        string
+	Website     *string
 	GuestbookID uint      `gorm:"index"`
 	Guestbook   Guestbook `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }

@@ -1,0 +1,26 @@
+{{template "layout.html" .}}
+
+{{define "title"}}Guestbook List{{end}}
+
+{{define "content"}}
+
+{{$isEditing := (and .Data (or .Data.ID false))}}
+<h1>{{if $isEditing}}Edit{{else}}New{{end}} Guestbook</h1>
+<div>
+    {{ $formActionUrl := "/admin/guestbook/new" }} <!-- Default URL -->
+    {{ if $isEditing }}
+    {{ $formActionUrl = printf "/admin/guestbook/%d/edit" .Data.ID }} <!-- Overwrite URL if $isEditing is truthy -->
+    {{ end }}
+
+    <form action="{{ $formActionUrl }}" method="post">
+        <div>
+            <label for="websiteURL">Website URL:</label>
+            <input type="text" id="websiteURL" name="websiteURL" {{if $isEditing}}value="{{.Data.WebsiteURL}}"
+                {{end}} required>
+        </div>
+        <div>
+            <input type="submit" value="{{if $isEditing}}Update{{else}}Create{{end}} Guestbook">
+        </div>
+    </form>
+</div>
+{{end}}
