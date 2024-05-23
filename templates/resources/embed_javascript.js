@@ -34,6 +34,10 @@
         return response.json();
       })
       .then(function (messages) {
+        messages.sort(function (a, b) {
+          return new Date(b.CreatedAt) - new Date(a.CreatedAt);
+        });
+
         messagesContainer.innerHTML = "";
         messages.forEach(function (message) {
           var messageContainer = document.createElement("div");
