@@ -91,7 +91,7 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 			submitterText = "[Website: " + website + "]"
 		}
 
-		SendMail([]string{adminUser.Email}, "[Guestbooks] New message on guestbook '"+guestbook.WebsiteURL+"'", fmt.Sprintf(`
+		go SendMail([]string{adminUser.Email}, "[Guestbooks] New message on guestbook '"+guestbook.WebsiteURL+"'", fmt.Sprintf(`
 Hi! Someone has just submitted a new message on your guestbook '%s'.
 
 From: %s %s

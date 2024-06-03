@@ -450,11 +450,11 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
+	currentUser := getSignedInAdminOrFail(r)
+
 	if r.Method == "GET" {
-		currentUser := getSignedInAdminOrFail(r)
 		renderAdminTemplate(w, r, "user_settings", currentUser)
 	} else {
-		currentUser := getSignedInAdminOrFail(r)
 		email := strings.TrimSpace(r.FormValue("email"))
 		notify := r.FormValue("notify") == "on"
 
@@ -473,7 +473,7 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 			currentUser.EmailVerificationToken = newToken
 			currentUser.EmailVerified = false
 
-			SendVerificationEmail(currentUser.Email, newToken)
+			go SendVerificationEmail(currentUser.Email, newToken)
 		}
 
 		result := db.Save(&currentUser)
