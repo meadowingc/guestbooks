@@ -10,7 +10,7 @@
     <label for="text">Message:</label>
     <textarea id="text" name="text" required>{{.Data.Text}}</textarea>
     <label for="website">Website (optional):</label>
-    <input type="url" id="website" name="website" value="{{.Data.Website}}">
+    <input type="url" id="website" name="website" value="{{if .Data.Website}}{{.Data.Website}}{{end}}">
     <input type="submit" value="Update">
 </form>
 {{end}}
