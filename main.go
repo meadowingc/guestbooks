@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/cors"
+	"github.com/spf13/viper"
 
 	"gorm.io/gorm"
 
@@ -20,6 +22,13 @@ import (
 var db *gorm.DB
 
 func main() {
+	viper.SetConfigName("config")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
+
 	initDatabase()
 	r := chi.NewRouter()
 

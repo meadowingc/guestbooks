@@ -1,5 +1,6 @@
 guestbook
 
+config.yaml
 tmp/
 *.db
 
