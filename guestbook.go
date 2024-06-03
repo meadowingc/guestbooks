@@ -95,7 +95,6 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 Hi! Someone has just submitted a new message on your guestbook '%s'.
 
 From: %s %s
-Message:
 ===BEGIN MESSAGE===
 %s
 ===END MESSAGE===
