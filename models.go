@@ -29,5 +29,7 @@ type AdminUser struct {
 	Username     string         `gorm:"uniqueIndex"`
 	PasswordHash datatypes.JSON `gorm:"type:json"`
 	Token        string         `gorm:"index;unique"`
+	Email        string         `gorm:""`
+	Notify       bool           `gorm:""`
 	Guestbooks   []Guestbook    `gorm:"foreignKey:AdminUserID"`
 }

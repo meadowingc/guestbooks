@@ -58,6 +58,9 @@
                 <div class="row">
                     <div class="col">Welcome, {{.CurrentUser.Username}}</div>
                     <div class="col">
+                        <a href="/admin/settings">Settings</a>
+                    </div>
+                    <div class="col">
                         <form action="/admin/logout" method="post" style="display: inline;">
                             <input type="submit" value="Logout">
                         </form>

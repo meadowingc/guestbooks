@@ -2,38 +2,76 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"log"
-
-	"github.com/spf13/viper"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
+	"github.com/spf13/viper"
+
+	"github.com/karim-w/go-azure-communication-services/emails"
 )
 
 func SendMail(recepients []string, subject, body string) error {
-	from := viper.GetString("smtp.from_email")
-	host := viper.GetString("smtp.host")
-	port := viper.GetString("smtp.port")
-	username := viper.GetString("smtp.username")
-	password := viper.GetString("smtp.password")
+	mailerToUse := viper.GetString("mailer.mailer_name")
+	if mailerToUse == "azure_communication_service" {
 
-	auth := sasl.NewLoginClient(username, password)
+		from := viper.GetString("mailer.azure_communication_service.from_email")
+		host := viper.GetString("mailer.azure_communication_service.host")
+		key := viper.GetString("mailer.azure_communication_service.key")
 
-	var err error
-	for _, recipient := range recepients {
-		message := "From: " + from + "\n" +
-			"To: " + recipient + "\n" +
-			"Subject: " + subject + "\n\n" +
-			body
-
-		to := []string{recipient}
-		msg := []byte(message)
-		reader := bytes.NewReader(msg)
-		err = smtp.SendMail(host+":"+port, auth, from, to, reader)
-		if err != nil {
-			log.Printf("WARN: Failed to send email: %v\n", err)
+		client := emails.NewClient(host, key, nil)
+		var err error
+		for _, recipient := range recepients {
+			payload := emails.Payload{
+				SenderAddress: from,
+				Content: emails.Content{
+					Subject:   subject,
+					PlainText: body,
+				},
+				Recipients: emails.Recipients{
+					To: []emails.ReplyTo{
+						{
+							Address: recipient,
+						},
+					},
+				},
+			}
+			_, err = client.SendEmail(context.Background(), payload)
+			if err != nil {
+				log.Printf("WARN: Failed to send email: %v\n", err)
+			}
 		}
-	}
+		return err
 
-	return err
+	} else if mailerToUse == "smtp" {
+		from := viper.GetString("mailer.smtp.from_email")
+		host := viper.GetString("mailer.smtp.host")
+		port := viper.GetString("mailer.smtp.port")
+		username := viper.GetString("mailer.smtp.username")
+		password := viper.GetString("mailer.smtp.password")
+
+		auth := sasl.NewLoginClient(username, password)
+
+		var err error
+		for _, recipient := range recepients {
+			message := "From: " + from + "\n" +
+				"To: " + recipient + "\n" +
+				"Subject: " + subject + "\n\n" +
+				body
+
+			to := []string{recipient}
+			msg := []byte(message)
+			reader := bytes.NewReader(msg)
+			err = smtp.SendMail(host+":"+port, auth, from, to, reader)
+			if err != nil {
+				log.Printf("WARN: Failed to send email: %v\n", err)
+			}
+		}
+
+		return err
+	} else {
+		log.Fatalf("Unknown mailer config: %s\n", mailerToUse)
+		panic("unknown mailer config")
+	}
 }

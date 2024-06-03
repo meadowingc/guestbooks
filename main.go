@@ -55,9 +55,8 @@ func main() {
 
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
-
-		r.Get("/guestbook/new", GetAdminCreateGuestbook)
-		r.Post("/guestbook/new", PostAdminCreateGuestbook)
+		r.Get("/settings", AdminUserSettings)
+		r.Post("/settings", AdminUserSettings)
 
 		r.Get("/signin", AdminSignIn)
 		r.Post("/signin", AdminSignIn)
@@ -70,8 +69,13 @@ func main() {
 		r.Route("/guestbook/{guestbookID}", func(r chi.Router) {
 			r.Get("/", AdminShowGuestbook)
 			r.Get("/embed", AdminEmbedGuestbook)
+
+			r.Get("/new", AdminCreateGuestbook)
+			r.Post("/new", AdminCreateGuestbook)
+
 			r.Get("/edit", AdminEditGuestbook)
 			r.Post("/edit", AdminUpdateGuestbook)
+
 			r.Post("/delete", AdminDeleteGuestbook)
 
 			r.Route("/message/{messageID}", func(r chi.Router) {

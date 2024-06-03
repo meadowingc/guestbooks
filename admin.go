@@ -240,8 +240,21 @@ func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
 	renderAdminTemplate(w, r, "show_guestbook", guestbook)
 }
 
-func GetAdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
-	renderAdminTemplate(w, r, "create_edit_guestbook", nil)
+func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		renderAdminTemplate(w, r, "create_edit_guestbook", nil)
+	} else {
+		adminUser := getSignedInAdminOrFail(r)
+
+		websiteURL := r.FormValue("websiteURL")
+		newGuestbook := Guestbook{WebsiteURL: websiteURL, AdminUserID: adminUser.ID}
+		result := db.Create(&newGuestbook)
+		if result.Error != nil {
+			http.Error(w, "Error creating guestbook", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	}
 }
 
 func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
@@ -260,20 +273,6 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	renderAdminTemplate(w, r, "embed_guestbook", guestbook)
-}
-
-func PostAdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
-	adminUser := getSignedInAdminOrFail(r)
-
-	websiteURL := r.FormValue("websiteURL")
-	newGuestbook := Guestbook{WebsiteURL: websiteURL, AdminUserID: adminUser.ID}
-	result := db.Create(&newGuestbook)
-	if result.Error != nil {
-		http.Error(w, "Error creating guestbook", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
-
 }
 
 func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
@@ -446,4 +445,26 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
+}
+
+func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		currentUser := getSignedInAdminOrFail(r)
+		renderAdminTemplate(w, r, "user_settings", currentUser)
+	} else {
+		currentUser := getSignedInAdminOrFail(r)
+		email := r.FormValue("email")
+		notify := r.FormValue("notify") == "on"
+
+		currentUser.Email = email
+		currentUser.Notify = notify
+
+		result := db.Save(&currentUser)
+		if result.Error != nil {
+			http.Error(w, "Error updating user settings", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
+	}
 }
