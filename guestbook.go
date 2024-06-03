@@ -85,7 +85,7 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if adminUser.Notify && adminUser.Email != "" {
+	if adminUser.EmailNotifications && adminUser.EmailVerified && adminUser.Email != "" {
 		submitterText := ""
 		if website != "" {
 			submitterText = "[Website: " + website + "]"

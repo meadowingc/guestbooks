@@ -10,9 +10,12 @@
 	<input type="email" id="email" name="email" value="{{ .Data.Email }}" required>
 	<br>
 	<label for="notify">Receive Email Notifications:</label>
-	<input type="checkbox" id="notify" name="notify" {{ if .Data.Notify }}checked{{ end }}>
+	<input type="checkbox" id="notify" name="notify" {{ if .Data.EmailNotifications }}checked{{ end }}>
 	<br>
 	<br>
 	<input type="submit" value="Update Settings">
 </form>
+
+
+
 {{ end }}

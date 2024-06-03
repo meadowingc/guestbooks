@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -135,7 +137,7 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		admin.Token = token
+		admin.SessionToken = token
 		db.Save(&admin)
 
 		http.SetCookie(w, &http.Cookie{
@@ -182,7 +184,7 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Error creating account: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		newAdmin.Token = token
+		newAdmin.SessionToken = token
 		db.Save(&newAdmin)
 
 		http.SetCookie(w, &http.Cookie{
@@ -453,11 +455,26 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 		renderAdminTemplate(w, r, "user_settings", currentUser)
 	} else {
 		currentUser := getSignedInAdminOrFail(r)
-		email := r.FormValue("email")
+		email := strings.TrimSpace(r.FormValue("email"))
 		notify := r.FormValue("notify") == "on"
 
+		hasChangedEmail := currentUser.Email != email
+
 		currentUser.Email = email
-		currentUser.Notify = notify
+		currentUser.EmailNotifications = notify
+
+		if hasChangedEmail {
+			newToken, err := generateAuthToken()
+			if err != nil {
+				http.Error(w, "Error updating user settings", http.StatusInternalServerError)
+				return
+			}
+
+			currentUser.EmailVerificationToken = newToken
+			currentUser.EmailVerified = false
+
+			SendVerificationEmail(currentUser.Email, newToken)
+		}
 
 		result := db.Save(&currentUser)
 		if result.Error != nil {
@@ -467,4 +484,34 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 
 		http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
 	}
+}
+
+func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Token is required", http.StatusBadRequest)
+		return
+	}
+
+	var user AdminUser
+	result := db.Where(&AdminUser{EmailVerificationToken: token}).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			http.Error(w, "Invalid token", http.StatusBadRequest)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	user.EmailVerified = true
+	user.EmailVerificationToken = "" // Clear the token after verification
+	result = db.Save(&user)
+	if result.Error != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect to a confirmation page or display a success message
+	w.Write([]byte("Email verified successfully!"))
 }

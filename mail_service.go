@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/emersion/go-sasl"
@@ -15,7 +16,6 @@ import (
 func SendMail(recepients []string, subject, body string) error {
 	mailerToUse := viper.GetString("mailer.mailer_name")
 	if mailerToUse == "azure_communication_service" {
-
 		from := viper.GetString("mailer.azure_communication_service.from_email")
 		host := viper.GetString("mailer.azure_communication_service.host")
 		key := viper.GetString("mailer.azure_communication_service.key")
@@ -74,4 +74,12 @@ func SendMail(recepients []string, subject, body string) error {
 		log.Fatalf("Unknown mailer config: %s\n", mailerToUse)
 		panic("unknown mailer config")
 	}
+}
+
+func SendVerificationEmail(recipient, token string) error {
+	subject := "[Guestbooks] Please verify your email address"
+	verificationLink := fmt.Sprintf("https://guestbooks.meadowing.club/verify-email?token=%s", token)
+	body := fmt.Sprintf("Please click on the following link to verify your email address: %s", verificationLink)
+
+	return SendMail([]string{recipient}, subject, body)
 }

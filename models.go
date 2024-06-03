@@ -26,10 +26,12 @@ type Message struct {
 // AdminUser represents an admin user with access to the admin panel
 type AdminUser struct {
 	gorm.Model
-	Username     string         `gorm:"uniqueIndex"`
-	PasswordHash datatypes.JSON `gorm:"type:json"`
-	Token        string         `gorm:"index;unique"`
-	Email        string         `gorm:""`
-	Notify       bool           `gorm:""`
-	Guestbooks   []Guestbook    `gorm:"foreignKey:AdminUserID"`
+	Username               string         `gorm:"uniqueIndex"`
+	PasswordHash           datatypes.JSON `gorm:"type:json"`
+	SessionToken           string         `gorm:"index;unique"`
+	Email                  string         `gorm:""`
+	EmailVerified          bool           `gorm:"default:false"`
+	EmailVerificationToken string         `gorm:"index"`
+	EmailNotifications     bool           `gorm:""`
+	Guestbooks             []Guestbook    `gorm:"foreignKey:AdminUserID"`
 }
