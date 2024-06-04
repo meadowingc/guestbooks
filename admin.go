@@ -171,21 +171,20 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		newAdmin := AdminUser{Username: username, PasswordHash: passwordHash}
-		result := db.Create(&newAdmin)
-		if result.Error != nil {
-			http.Error(w, "Error creating account: "+result.Error.Error(), http.StatusInternalServerError)
-			return
-		}
-
 		// Create a new token and store it in a cookie
 		token, err := generateAuthToken()
 		if err != nil {
 			http.Error(w, "Error creating account: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		newAdmin.SessionToken = token
-		db.Save(&newAdmin)
+
+		newAdmin := AdminUser{Username: username, PasswordHash: passwordHash, SessionToken: token}
+
+		result := db.Create(&newAdmin)
+		if result.Error != nil {
+			http.Error(w, "Error creating account: "+result.Error.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		http.SetCookie(w, &http.Cookie{
 			Name:  string(AdminTokenCookieName),
