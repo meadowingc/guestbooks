@@ -88,16 +88,16 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Validate the token and retrieve the corresponding admin user
-		var admin AdminUser
-		result := db.Where("token = ?", cookie.Value).First(&admin)
+		// Validate the token and retrieve the corresponding user user
+		var user AdminUser
+		result := db.Where(&AdminUser{SessionToken: cookie.Value}).First(&user)
 		if result.Error != nil {
 			http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
 			return
 		}
 
 		// Store the admin user in the context
-		ctx := context.WithValue(r.Context(), AdminUserCookieName, &admin)
+		ctx := context.WithValue(r.Context(), AdminUserCookieName, &user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -118,9 +118,9 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 
 		var admin AdminUser
-		result := db.Where("username = ?", username).First(&admin)
+		result := db.Where(&AdminUser{Username: username}).First(&admin)
 		if result.Error != nil {
-			http.Error(w, "Invalid username", http.StatusUnauthorized)
+			http.Error(w, "Invalid username. You're trying to sign in, but perhaps you still need to sign up?", http.StatusUnauthorized)
 			return
 		}
 
@@ -211,7 +211,7 @@ func AdminGuestbookList(w http.ResponseWriter, r *http.Request) {
 	adminUser := getSignedInAdminOrFail(r)
 
 	var guestbooks []Guestbook
-	result := db.Where("admin_user_id = ?", adminUser.ID).Find(&guestbooks)
+	result := db.Where(&Guestbook{AdminUserID: adminUser.ID}).Find(&guestbooks)
 	if result.Error != nil {
 		http.Error(w, "Error fetching guestbooks", http.StatusInternalServerError)
 		return

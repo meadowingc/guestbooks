@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/cors"
@@ -120,8 +121,13 @@ func main() {
 		r.Route("/v1", func(r chi.Router) {
 			r.Get("/get-guestbook-messages/{guestbookID}", func(w http.ResponseWriter, r *http.Request) {
 				guestbookID := chi.URLParam(r, "guestbookID")
+				guestbookIDUint, err := strconv.ParseUint(guestbookID, 10, 32)
+				if err != nil {
+					log.Fatal(err)
+				}
+
 				var messages []Message
-				result := db.Where("guestbook_id = ?", guestbookID).Find(&messages)
+				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint)}).Find(&messages)
 				if result.Error != nil {
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 					return
