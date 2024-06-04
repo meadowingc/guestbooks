@@ -68,12 +68,12 @@ func main() {
 
 		r.Post("/logout", AdminLogout)
 
+		r.Get("/guestbook/new", AdminCreateGuestbook)
+		r.Post("/guestbook/new", AdminCreateGuestbook)
+
 		r.Route("/guestbook/{guestbookID}", func(r chi.Router) {
 			r.Get("/", AdminShowGuestbook)
 			r.Get("/embed", AdminEmbedGuestbook)
-
-			r.Get("/new", AdminCreateGuestbook)
-			r.Post("/new", AdminCreateGuestbook)
 
 			r.Get("/edit", AdminEditGuestbook)
 			r.Post("/edit", AdminUpdateGuestbook)
