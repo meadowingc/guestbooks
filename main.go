@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -91,9 +92,10 @@ func initRouter() *chi.Mux {
 		MaxAge:           300,
 	})
 
+	r.Use(CORSMiddleware.Handler)
+	r.Use(RealIPMiddleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(CORSMiddleware.Handler)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		renderAdminTemplate(w, r, "landing_page", nil)
@@ -191,4 +193,22 @@ func initRouter() *chi.Mux {
 	})
 
 	return r
+}
+
+// RealIPMiddleware extracts the client's real IP address from the
+// X-Forwarded-For header and sets it on the request's RemoteAddr field. Useful
+// for when the app is running behind a reverse proxy
+func RealIPMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			// This assumes the first IP in the X-Forwarded-For list is the client's real IP
+			// This may need to be adjusted depending on your reverse proxy setup
+			i := strings.Index(xff, ", ")
+			if i == -1 {
+				i = len(xff)
+			}
+			r.RemoteAddr = xff[:i]
+		}
+		next.ServeHTTP(w, r)
+	})
 }
