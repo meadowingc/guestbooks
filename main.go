@@ -6,7 +6,10 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/cors"
@@ -31,6 +34,52 @@ func main() {
 	}
 
 	initDatabase()
+	// Setup a channel to listen for termination signals
+	signals := make(chan os.Signal, 1)
+	// Notify signals channel on SIGINT and SIGTERM
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
+
+	r := initRouter()
+
+	const portNum = ":6235"
+	go func() {
+		log.Printf("Running on http://localhost%s", portNum)
+		if err := http.ListenAndServe(portNum, r); err != nil {
+			log.Printf("HTTP server stopped: %v", err)
+		}
+	}()
+
+	// Block until a signal is received
+	<-signals
+	log.Println("Shutting down gracefully...")
+
+	// Close the database connection
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Printf("Error on closing database connection: %v", err)
+	} else {
+		if err := sqlDB.Close(); err != nil {
+			log.Printf("Error on closing database connection: %v", err)
+		}
+	}
+}
+
+func initDatabase() {
+	var err error
+	db, err = gorm.Open(sqlite.Open("file:guestbook.db?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect database: %v", err)
+	}
+
+	// Migrate the schema
+	err = db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{})
+	if err != nil {
+		log.Fatalf("failed to migrate database: %v", err)
+	}
+}
+
+func initRouter() *chi.Mux {
+
 	r := chi.NewRouter()
 
 	CORSMiddleware := cors.New(cors.Options{
@@ -138,21 +187,5 @@ func main() {
 		})
 	})
 
-	const portNum = ":6235"
-	log.Printf("Running on http://localhost%s", portNum)
-	log.Fatal(http.ListenAndServe(portNum, r))
-}
-
-func initDatabase() {
-	var err error
-	db, err = gorm.Open(sqlite.Open("guestbook.db"), &gorm.Config{})
-	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
-	}
-
-	// Migrate the schema
-	err = db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{})
-	if err != nil {
-		log.Fatalf("failed to migrate database: %v", err)
-	}
+	return r
 }
