@@ -143,6 +143,9 @@ func initRouter() *chi.Mux {
 		r.Post("/{guestbookID}/submit", GuestbookSubmit)
 	})
 
+	fileServer := http.FileServer(http.Dir("./assets"))
+	r.Handle("/assets/*", http.StripPrefix("/assets", fileServer))
+
 	r.Route("/resources", func(r chi.Router) {
 		r.Route("/js", func(r chi.Router) {
 			r.Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
