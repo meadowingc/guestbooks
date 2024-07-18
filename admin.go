@@ -88,10 +88,18 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Validate the token and retrieve the corresponding user user
+		// Validate the token and retrieve the corresponding user
 		var user AdminUser
 		result := db.Where(&AdminUser{SessionToken: cookie.Value}).First(&user)
 		if result.Error != nil {
+			// Clear the invalid cookie
+			http.SetCookie(w, &http.Cookie{
+				Name:   string(AdminTokenCookieName),
+				Value:  "",
+				Path:   "/",
+				MaxAge: -1,
+			})
+
 			http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
 			return
 		}
