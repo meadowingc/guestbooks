@@ -2,5 +2,5 @@ guestbook
 
 config.yaml
 tmp/
-*.db
+*.db*
 
