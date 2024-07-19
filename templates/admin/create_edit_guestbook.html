@@ -15,9 +15,14 @@
     <form action="{{ $formActionUrl }}" method="post">
         <div>
             <label for="websiteURL">Website URL:</label>
-            <input type="text" id="websiteURL" name="websiteURL" {{if $isEditing}}value="{{.Data.WebsiteURL}}"
-                {{end}} required>
+            <input type="text" id="websiteURL" name="websiteURL" {{if $isEditing}}value="{{.Data.WebsiteURL}}" {{end}}
+                required>
         </div>
+        <div>
+            <label for="requiresApproval">Requires Approval:</label>
+            <input type="checkbox" id="requiresApproval" name="requiresApproval" {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>
+        </div>
+        <br>
         <div>
             <input type="submit" value="{{if $isEditing}}Update{{else}}Create{{end}} Guestbook">
         </div>

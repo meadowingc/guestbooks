@@ -12,7 +12,6 @@ import (
 	"guestbook/constants"
 
 	"github.com/go-chi/chi/v5"
-	"gorm.io/gorm"
 )
 
 var guestbookTemplate *template.Template = loadGuestbookTemplate()
@@ -35,10 +34,8 @@ func loadGuestbookTemplate() *template.Template {
 
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
-	var guestbook Guestbook
-	result := db.Preload("Messages", func(db *gorm.DB) *gorm.DB {
-		return db.Order("created_at desc")
-	}).First(&guestbook, "id = ?", guestbookID)
+	var websiteURL string
+	result := db.Model(&Guestbook{}).Select("website_url").Where("id = ?", guestbookID).Scan(&websiteURL)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
@@ -48,7 +45,15 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		guestbookTemplate = loadGuestbookTemplate()
 	}
 
-	err := guestbookTemplate.Execute(w, guestbook)
+	data := struct {
+		ID         string
+		WebsiteURL string
+	}{
+		ID:         guestbookID,
+		WebsiteURL: websiteURL,
+	}
+
+	err := guestbookTemplate.Execute(w, data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -70,7 +75,14 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 	if website != "" {
 		websitePtr = &website
 	}
-	message := Message{Name: name, Text: text, Website: websitePtr, GuestbookID: guestbook.ID}
+
+	message := Message{
+		Name:        name,
+		Text:        text,
+		Website:     websitePtr,
+		GuestbookID: guestbook.ID,
+		Approved:    !guestbook.RequiresApproval,
+	}
 	result = db.Create(&message)
 	if result.Error != nil {
 		http.Error(w, "Error submitting message", http.StatusInternalServerError)

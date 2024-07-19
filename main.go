@@ -181,7 +181,7 @@ func initRouter() *chi.Mux {
 				}
 
 				var messages []Message
-				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint)}).Find(&messages)
+				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).Find(&messages)
 				if result.Error != nil {
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 					return

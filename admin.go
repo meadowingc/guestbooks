@@ -256,7 +256,13 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		adminUser := getSignedInAdminOrFail(r)
 
 		websiteURL := r.FormValue("websiteURL")
-		newGuestbook := Guestbook{WebsiteURL: websiteURL, AdminUserID: adminUser.ID}
+		requiresApproval := r.FormValue("requiresApproval") == "on"
+
+		newGuestbook := Guestbook{
+			WebsiteURL:       websiteURL,
+			RequiresApproval: requiresApproval,
+			AdminUserID:      adminUser.ID,
+		}
 		result := db.Create(&newGuestbook)
 		if result.Error != nil {
 			http.Error(w, "Error creating guestbook", http.StatusInternalServerError)
@@ -330,6 +336,7 @@ func AdminEditGuestbook(w http.ResponseWriter, r *http.Request) {
 func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 	websiteURL := r.FormValue("websiteURL")
+	requiresApproval := r.FormValue("requiresApproval") == "on"
 
 	var guestbook Guestbook
 	result := db.First(&guestbook, guestbookID)
@@ -345,13 +352,15 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	guestbook.WebsiteURL = websiteURL
+	guestbook.RequiresApproval = requiresApproval
+
 	result = db.Save(&guestbook)
 	if result.Error != nil {
 		http.Error(w, "Error updating guestbook", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
 }
 
 func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
@@ -384,6 +393,8 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 		name := r.FormValue("name")
 		text := r.FormValue("text")
 		website := r.FormValue("website")
+		isApproved := r.FormValue("isApproved") == "on"
+
 		var websitePtr *string
 		if website != "" {
 			websitePtr = &website
@@ -412,6 +423,7 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 		message.Name = name
 		message.Text = text
 		message.Website = websitePtr
+		message.Approved = isApproved
 
 		result = db.Save(&message)
 		if result.Error != nil {

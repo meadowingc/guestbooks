@@ -8,9 +8,10 @@ import (
 // Guestbook represents a collection of messages for a specific website
 type Guestbook struct {
 	gorm.Model
-	WebsiteURL  string
-	AdminUserID uint `gorm:"index"`
-	Messages    []Message
+	WebsiteURL       string
+	AdminUserID      uint `gorm:"index"`
+	RequiresApproval bool `gorm:"default:false"`
+	Messages         []Message
 }
 
 // Message represents a guestbook message
@@ -19,6 +20,7 @@ type Message struct {
 	Name        string
 	Text        string
 	Website     *string
+	Approved    bool
 	GuestbookID uint      `gorm:"index"`
 	Guestbook   Guestbook `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
