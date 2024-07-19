@@ -28,7 +28,7 @@
 
   function guestbooks___loadMessages() {
     var apiUrl =
-      "/api/v1/get-guestbook-messages/{{.GuestbookID}}";
+      "https://guestbooks.meadowing.club/api/v1/get-guestbook-messages/{{.GuestbookID}}";
     fetch(apiUrl)
       .then(function (response) {
         return response.json();
