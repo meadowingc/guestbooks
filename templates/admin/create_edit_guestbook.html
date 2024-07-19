@@ -18,14 +18,22 @@
             <input type="text" id="websiteURL" name="websiteURL" {{if $isEditing}}value="{{.Data.WebsiteURL}}" {{end}}
                 required>
         </div>
+        <br>
         <div>
-            <label for="requiresApproval">Requires Approval:</label>
+            <label for="requiresApproval">Messages require approval before being publicly displayed:</label>
             <input type="checkbox" id="requiresApproval" name="requiresApproval" {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>
+            <div>
+                <small>
+                    Tip: if you require message approval then it is recommended you also 
+                    enable email notifications in your <a href="/admin/settings">user settings</a>.
+                </small>
+            </div>
         </div>
         <br>
         <div>
             <input type="submit" value="{{if $isEditing}}Update{{else}}Create{{end}} Guestbook">
         </div>
+        <br>
     </form>
 </div>
 {{end}}
