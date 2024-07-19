@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"guestbook/constants"
 	"html/template"
 	"log"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/go-chi/cors"
 	"github.com/spf13/viper"
@@ -157,14 +157,18 @@ func initRouter() *chi.Mux {
 					log.Fatalf("Error parsing guestbook page template: %v", err)
 				}
 
-				templateData := struct {
-					GuestbookID string
-				}{
-					GuestbookID: guestbookID,
+				hostUrl := constants.PUBLIC_URL
+				if constants.DEBUG_MODE {
+					hostUrl = "//" + r.Host
 				}
 
-				w.Header().Set("Cache-Control", "public, max-age=259200") // 3 days
-				w.Header().Set("Expires", time.Now().Add(72*time.Hour).Format(http.TimeFormat))
+				templateData := struct {
+					GuestbookID string
+					HostUrl     string
+				}{
+					GuestbookID: guestbookID,
+					HostUrl:     hostUrl,
+				}
 
 				template.Execute(w, templateData)
 			})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"guestbook/constants"
 	"log"
 
 	"github.com/emersion/go-sasl"
@@ -78,7 +79,7 @@ func SendMail(recepients []string, subject, body string) error {
 
 func SendVerificationEmail(recipient, token string) error {
 	subject := "[Guestbooks] Please verify your email address"
-	verificationLink := fmt.Sprintf("https://guestbooks.meadowing.club/verify-email?token=%s", token)
+	verificationLink := fmt.Sprintf(constants.PUBLIC_URL+"/verify-email?token=%s", token)
 	body := fmt.Sprintf("Please click on the following link to verify your email address: %s", verificationLink)
 
 	return SendMail([]string{recipient}, subject, body)

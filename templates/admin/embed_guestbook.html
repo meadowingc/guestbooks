@@ -17,7 +17,7 @@
     <p>Copy and paste the following code into your website's HTML to embed this guestbook form:</p>
     <pre>
 <code class="language-html" data-lang="html">
-&lt;iframe src="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}" width="300" height="500" frameborder="0">&lt;/iframe>
+&lt;iframe src="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}" width="300" height="500" frameborder="0">&lt;/iframe>
 </code>
 </pre>
 </div>
@@ -30,9 +30,9 @@
     </p>
     <pre>
 <code class="language-html" data-lang="html">
-&lt;script async src="https://guestbooks.meadowing.club/resources/js/embed_script/{{.Data.ID}}/script.js">&lt;/script> 
+&lt;script async src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js">&lt;/script> 
 &lt;div id="guestbooks___guestbook-form-container">
-    &lt;form id="guestbooks___guestbook-form" action="https://guestbooks.meadowing.club/guestbook/{{.Data.ID}}/submit" method="post">
+    &lt;form id="guestbooks___guestbook-form" action="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit" method="post">
         &lt;div class="guestbooks___input-container">
             &lt;input placeholder="Name" type="text" id="name" name="name" required>
         &lt;/div>
@@ -48,7 +48,7 @@
     &lt;/form>
 &lt;/div>
 &lt;div id="guestbooks___guestbook-made-with" style="text-align: right;">
-    &lt;small>Lovingly made with &lt;a target="_blank" href="https://guestbooks.meadowing.club">Guestbooks&lt;/a>&lt;/small>
+    &lt;small>Lovingly made with &lt;a target="_blank" href="{{.Data.PublicHostUrl}}">Guestbooks&lt;/a>&lt;/small>
 &lt;/div>  
 &lt;hr style="margin: 1em 0;"/>
 &lt;h3 id="guestbooks___guestbook-messages-header">Messages&lt;/h3>

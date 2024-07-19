@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"guestbook/constants"
 	"html/template"
 	"log"
 	"net/http"
@@ -287,7 +288,20 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderAdminTemplate(w, r, "embed_guestbook", guestbook)
+	hostUrl := constants.PUBLIC_URL
+	if constants.DEBUG_MODE {
+		hostUrl = "//" + r.Host
+	}
+
+	data := struct {
+		Guestbook     Guestbook
+		PublicHostUrl string
+	}{
+		Guestbook:     guestbook,
+		PublicHostUrl: hostUrl,
+	}
+
+	renderAdminTemplate(w, r, "embed_guestbook", data)
 }
 
 func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
