@@ -38,7 +38,7 @@
     challengeContainer.innerHTML = `
     <br>
     <div class="guestbooks___input-container">
-        <label for="challengeQuestionAnswer">${challengeQuestion}</label>
+        <label for="challengeQuestionAnswer">${challengeQuestion}</label> <br>
         <input placeholder="${challengeHint}" type="text" id="challengeQuestionAnswer" name="challengeQuestionAnswer" required>
     </div>
     `;
