@@ -4,31 +4,49 @@
     "guestbooks___guestbook-messages-container"
   );
 
-  form.addEventListener("submit", function (event) {
+  form.addEventListener("submit", async function (event) {
     event.preventDefault();
 
     var formData = new FormData(form);
-    fetch(form.action, {
+    const response = await fetch(form.action, {
       method: "POST",
       body: formData,
-    })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-      })
-      .then(function () {
-        form.reset();
-        guestbooks___loadMessages();
-      })
-      .catch(function (error) {
-        console.error("Error:", error);
-      });
+    });
+
+    const errorContainer = document.querySelector("#guestbooks___error-message");
+
+    if (response.ok) {
+      form.reset();
+      guestbooks___loadMessages();
+      errorContainer.innerHTML = "";
+    } else {
+      const err = await response.text();
+      console.error("Error:", err);
+      errorContainer.innerHTML = "{{.Guestbook.ChallengeFailedMessage}}";
+    }
   });
+
+  function guestbooks___populateQuestionChallenge() {
+    const challengeQuestion = "{{.Guestbook.ChallengeQuestion}}";
+    const challengeHint = "{{.Guestbook.ChallengeHint}}";
+
+    if (challengeQuestion.trim().length === 0) {
+      return;
+    }
+
+    const challengeContainer = document.querySelector("#guestbooks___challenge—answer—container");
+    challengeContainer.innerHTML = `
+    <br>
+    <div class="guestbooks___input-container">
+        <label for="challengeQuestionAnswer">${challengeQuestion}</label>
+        <input placeholder="${challengeHint}" type="text" id="challengeQuestionAnswer" name="challengeQuestionAnswer" required>
+    </div>
+    `;
+  }
 
   function guestbooks___loadMessages() {
     var apiUrl =
-      "{{.HostUrl}}/api/v1/get-guestbook-messages/{{.GuestbookID}}";
+      "{{.HostUrl}}/api/v1/get-guestbook-messages/{{.Guestbook.ID}}";
     fetch(apiUrl)
       .then(function (response) {
         return response.json();
@@ -89,5 +107,6 @@
       });
   }
 
+  guestbooks___populateQuestionChallenge();
   guestbooks___loadMessages();
 })();

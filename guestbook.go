@@ -62,11 +62,26 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 
 func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
+
 	var guestbook Guestbook
-	result := db.First(&guestbook, "id = ?", guestbookID)
+	result := db.First(&guestbook, guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
+	}
+
+	// check that the form has the expected challenge if necesary
+	if strings.TrimSpace(guestbook.ChallengeQuestion) != "" {
+		challengeQuestionAnswer := strings.TrimSpace(r.FormValue("challengeQuestionAnswer"))
+		challengeQuestionAnswer = strings.ToLower(challengeQuestionAnswer)
+
+		expectedChallengeAnswer := strings.TrimSpace(guestbook.ChallengeAnswer)
+		expectedChallengeAnswer = strings.ToLower(expectedChallengeAnswer)
+
+		if expectedChallengeAnswer != "" && expectedChallengeAnswer != challengeQuestionAnswer {
+			http.Error(w, "The provided answer to the challenge question is invalid!", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	name := strings.TrimSpace(r.FormValue("name"))

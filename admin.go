@@ -257,12 +257,20 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		adminUser := getSignedInAdminOrFail(r)
 
 		websiteURL := r.FormValue("websiteURL")
+		challengeQuestion := r.FormValue("challengeQuestion")
+		challengeHint := r.FormValue("challengeHint")
+		challengeFailedMessage := r.FormValue("challengeFailedMessage")
+		challengeAnswer := r.FormValue("challengeAnswer")
 		requiresApproval := r.FormValue("requiresApproval") == "on"
 
 		newGuestbook := Guestbook{
-			WebsiteURL:       websiteURL,
-			RequiresApproval: requiresApproval,
-			AdminUserID:      adminUser.ID,
+			WebsiteURL:             websiteURL,
+			RequiresApproval:       requiresApproval,
+			ChallengeQuestion:      challengeQuestion,
+			ChallengeHint:          challengeHint,
+			ChallengeFailedMessage: challengeFailedMessage,
+			ChallengeAnswer:        challengeAnswer,
+			AdminUserID:            adminUser.ID,
 		}
 		result := db.Create(&newGuestbook)
 		if result.Error != nil {
@@ -350,6 +358,10 @@ func AdminEditGuestbook(w http.ResponseWriter, r *http.Request) {
 func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 	websiteURL := r.FormValue("websiteURL")
+	challengeQuestion := r.FormValue("challengeQuestion")
+	challengeHint := r.FormValue("challengeHint")
+	challengeFailedMessage := r.FormValue("challengeFailedMessage")
+	challengeAnswer := r.FormValue("challengeAnswer")
 	requiresApproval := r.FormValue("requiresApproval") == "on"
 
 	var guestbook Guestbook
@@ -367,6 +379,10 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 
 	guestbook.WebsiteURL = websiteURL
 	guestbook.RequiresApproval = requiresApproval
+	guestbook.ChallengeQuestion = challengeQuestion
+	guestbook.ChallengeHint = challengeHint
+	guestbook.ChallengeFailedMessage = challengeFailedMessage
+	guestbook.ChallengeAnswer = challengeAnswer
 
 	result = db.Save(&guestbook)
 	if result.Error != nil {

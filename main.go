@@ -162,14 +162,22 @@ func initRouter() *chi.Mux {
 					hostUrl = "//" + r.Host
 				}
 
-				templateData := struct {
-					GuestbookID string
-					HostUrl     string
-				}{
-					GuestbookID: guestbookID,
-					HostUrl:     hostUrl,
+				var guestbook Guestbook
+				result := db.First(&guestbook, guestbookID)
+				if result.Error != nil {
+					http.Error(w, "Guestbook not found", http.StatusInternalServerError)
+					return
 				}
 
+				templateData := struct {
+					Guestbook Guestbook
+					HostUrl   string
+				}{
+					Guestbook: guestbook,
+					HostUrl:   hostUrl,
+				}
+
+				w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 				template.Execute(w, templateData)
 			})
 		})

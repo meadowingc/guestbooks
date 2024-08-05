@@ -18,26 +18,26 @@
 
             <script async src="/resources/js/embed_script/{{.ID}}/script.js"></script>
             <div id="guestbooks___guestbook-form-container">
-                <form id="guestbooks___guestbook-form"
-                    action="/guestbook/{{.ID}}/submit" method="post">
+                <form id="guestbooks___guestbook-form" action="/guestbook/{{.ID}}/submit" method="post">
                     <div class="guestbooks___input-container">
                         <input placeholder="Name" type="text" id="name" name="name" required>
                     </div>
                     <div class="guestbooks___input-container">
                         <input placeholder="Website (optional)" type="url" id="website" name="website">
                     </div>
+                    <div id="guestbooks___challenge—answer—container"></div>
                     <br />
                     <div class="guestbooks___input-container">
-                        <textarea placeholder="Message..." id="text" name="text" style="width: 100%;"
+                        <textarea placeholder="Message (plain text only)..." id="text" name="text" style="width: 100%;"
                             required></textarea>
                     </div>
                     <br />
                     <input type="submit" value="Submit">
+                    <div id="guestbooks___error-message"></div>
                 </form>
             </div>
             <div id="guestbooks___guestbook-made-with" style="text-align: right;">
-                <small>Lovingly made with <a target="_blank"
-                        href="/">Guestbooks</a></small>
+                <small>Lovingly made with <a target="_blank" href="/">Guestbooks</a></small>
             </div>
             <hr style="margin: 1em 0;" />
             <h3 id="guestbooks___guestbook-messages-header">Messages</h3>

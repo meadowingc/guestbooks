@@ -11,7 +11,13 @@ type Guestbook struct {
 	WebsiteURL       string
 	AdminUserID      uint `gorm:"index"`
 	RequiresApproval bool `gorm:"default:false"`
-	Messages         []Message
+
+	ChallengeQuestion      string
+	ChallengeAnswer        string
+	ChallengeHint          string
+	ChallengeFailedMessage string
+
+	Messages []Message
 }
 
 // Message represents a guestbook message
