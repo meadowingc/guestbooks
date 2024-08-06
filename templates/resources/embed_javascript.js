@@ -13,7 +13,13 @@
       body: formData,
     });
 
-    const errorContainer = document.querySelector("#guestbooks___error-message");
+    let errorContainer = document.querySelector("#guestbooks___error-message");
+    if (!errorContainer) {
+      errorContainer = document.createElement("div");
+      errorContainer.id = "guestbooks___error-message";
+      const submitButton = document.querySelector("#guestbooks___guestbook-form input[type='submit']");
+      submitButton.insertAdjacentElement('afterend', errorContainer);
+  }
 
     if (response.ok) {
       form.reset();
@@ -34,7 +40,16 @@
       return;
     }
 
-    const challengeContainer = document.querySelector("#guestbooks___challenge—answer—container");
+    let challengeContainer = document.querySelector("#guestbooks___challenge—answer—container");
+
+    // Add challenge question to the form if 
+    if (!challengeContainer) {
+      challengeContainer = document.createElement("div");
+      challengeContainer.id = "guestbooks___challenge—answer—container";
+      const websiteInput = document.querySelector("#guestbooks___guestbook-form #website").parentElement;
+      websiteInput.insertAdjacentElement('afterend', challengeContainer);
+  }
+
     challengeContainer.innerHTML = `
     <br>
     <div class="guestbooks___input-container">
