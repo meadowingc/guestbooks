@@ -42,36 +42,41 @@
                 <i>Does water boil at 100 C?</i>
             </small>
         </div>
-        {{if $isEditing}}
-        <div>
-            <br>
-            <small>
-                <b>NOTE for existing users:</b> if you're embedding your
-                Guestbook using JavaScript then you MUST go to the <a
-                href="/admin/guestbook/{{.Data.ID}}/embed">embed info page</a>
-                and copy the new embedding code.
-            </small>
-        </div>
-        {{end}}
         <br>
         <div>
             <label for="challengeQuestion">Verification Question (leave empty if you don't want to use it):</label>
-            <input type="text" id="challengeQuestion" name="challengeQuestion" {{if $isEditing}}value="{{.Data.ChallengeQuestion}}" {{end}}>
+            <input 
+                type="text" id="challengeQuestion" name="challengeQuestion"
+                placeholder="Is water wet?"
+                {{if $isEditing}}value="{{.Data.ChallengeQuestion}}" {{end}}
+            >
         </div>
         <br>
         <div>
             <label for="challengeHint">Hint that will be shown to users (optional):</label>
-            <input type="text" id="challengeHint" name="challengeHint" {{if $isEditing}}value="{{.Data.ChallengeHint}}" {{end}}>
+            <input 
+                type="text" id="challengeHint" name="challengeHint" 
+                placeholder="yes/no"
+                {{if $isEditing}}value="{{.Data.ChallengeHint}}" {{end}}
+            >
         </div>
         <br>
         <div>
             <label for="challengeFailedMessage">Message to show the user in case they fail to answer the challenge:</label>
-            <input type="text" id="challengeFailedMessage" name="challengeFailedMessage" {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}" {{else}}value="The provided answer to the challenge question is invalid!" {{end}}>
+            <input 
+                type="text" id="challengeFailedMessage" name="challengeFailedMessage" 
+                placeholder="Please answer yes or no."
+                {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}" {{else}}value="The provided answer to the challenge question is invalid!" {{end}}
+            >
         </div>
         <br>
         <div>
             <label for="challengeAnswer">Expected answer to the verification question (case insensitive):</label>
-            <input type="text" id="challengeAnswer" name="challengeAnswer" {{if $isEditing}}value="{{.Data.ChallengeAnswer}}" {{end}}>
+            <input 
+                type="text" id="challengeAnswer" name="challengeAnswer" 
+                placeholder="yes"
+                {{if $isEditing}}value="{{.Data.ChallengeAnswer}}" {{end}}
+            >
         </div>
         <br>
         <div>
