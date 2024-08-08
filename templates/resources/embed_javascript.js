@@ -19,7 +19,7 @@
       errorContainer.id = "guestbooks___error-message";
       const submitButton = document.querySelector("#guestbooks___guestbook-form input[type='submit']");
       submitButton.insertAdjacentElement('afterend', errorContainer);
-  }
+    }
 
     if (response.ok) {
       form.reset();
@@ -28,7 +28,11 @@
     } else {
       const err = await response.text();
       console.error("Error:", err);
-      errorContainer.innerHTML = "{{.Guestbook.ChallengeFailedMessage}}";
+      if (response.status === 401) {
+        errorContainer.innerHTML = "{{.Guestbook.ChallengeFailedMessage}}";
+      } else {
+        errorContainer.innerHTML = err;
+      }
     }
   });
 
@@ -48,7 +52,7 @@
       challengeContainer.id = "guestbooks___challenge—answer—container";
       const websiteInput = document.querySelector("#guestbooks___guestbook-form #website").parentElement;
       websiteInput.insertAdjacentElement('afterend', challengeContainer);
-  }
+    }
 
     challengeContainer.innerHTML = `
     <br>

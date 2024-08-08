@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/cors"
 	"github.com/spf13/viper"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 
 	"gorm.io/driver/sqlite"
 )
@@ -95,6 +97,7 @@ func initRouter() *chi.Mux {
 	r.Use(CORSMiddleware.Handler)
 	r.Use(RealIPMiddleware)
 	r.Use(middleware.Logger)
+	r.Use(httprate.LimitByIP(100, time.Minute)) // general rate limiter for all routes (shared across all routes)
 	r.Use(middleware.Recoverer)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +145,19 @@ func initRouter() *chi.Mux {
 
 	r.Route("/guestbook", func(r chi.Router) {
 		r.Get("/{guestbookID}", GuestbookPage)
-		r.Post("/{guestbookID}/submit", GuestbookSubmit)
+
+		// this means the user has at most N attempts to submit a message to a given guestbook in a minute
+		submitRateLimiter := httprate.Limit(
+			20,          // requests
+			time.Minute, // per duration
+			httprate.WithKeyFuncs(httprate.KeyByIP, httprate.KeyByEndpoint),
+			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, `Rate limited. Please slow down.`, http.StatusTooManyRequests)
+			}),
+		)
+
+		r.With(submitRateLimiter).
+			Post("/{guestbookID}/submit", GuestbookSubmit)
 	})
 
 	fileServer := http.FileServer(http.Dir("./assets"))
