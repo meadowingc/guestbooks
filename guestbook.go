@@ -102,6 +102,11 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		websitePtr = &website
 	}
 
+	if len(text) > constants.MAX_MESSAGE_LENGTH {
+		http.Error(w, "Message is too long, maximum length is "+fmt.Sprint(constants.MAX_MESSAGE_LENGTH)+" characters", http.StatusBadRequest)
+		return
+	}
+
 	message := Message{
 		Name:        name,
 		Text:        text,
