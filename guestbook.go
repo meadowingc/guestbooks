@@ -35,10 +35,20 @@ func loadGuestbookTemplate() *template.Template {
 
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
+
 	var websiteURL string
-	result := db.Model(&Guestbook{}).Select("website_url").Where("id = ?", guestbookID).Scan(&websiteURL)
+	result := db.Model(&Guestbook{}).
+		Select("website_url").
+		Where("id = ?", guestbookID).
+		Scan(&websiteURL)
+
 	if result.Error != nil {
-		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		http.Error(w, "Error querying the database", http.StatusInternalServerError)
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		http.Error(w, "Guestbook not found. It may have been deleted or the URL is incorrect.", http.StatusNotFound)
 		return
 	}
 
