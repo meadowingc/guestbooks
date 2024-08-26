@@ -44,12 +44,12 @@
       return;
     }
 
-    let challengeContainer = document.querySelector("#guestbooks___challenge—answer—container");
+    let challengeContainer = document.querySelector("#guestbooks___challenge-answer-container") || document.querySelector("#guestbooks___challenge—answer—container")
 
     // Add challenge question to the form if 
     if (!challengeContainer) {
       challengeContainer = document.createElement("div");
-      challengeContainer.id = "guestbooks___challenge—answer—container";
+      challengeContainer.id = "guestbooks___challenge-answer-container";
       const websiteInput = document.querySelector("#guestbooks___guestbook-form #website").parentElement;
       websiteInput.insertAdjacentElement('afterend', challengeContainer);
     }
