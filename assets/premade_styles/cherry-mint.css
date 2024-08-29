@@ -1,6 +1,6 @@
 /* Adapted from: https://eggramen.neocities.org/code/css_testpages */
 body {
-    background: #f7d5f7 url("/img/cherrie.gif"); /* Replace with your own background */
+    background: #f7d5f7;
     background-size: cover;
     background-attachment: fixed;
     background-position: center;
