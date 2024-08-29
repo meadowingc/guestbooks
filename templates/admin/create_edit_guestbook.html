@@ -1,10 +1,14 @@
 {{template "layout.html" .}}
 
-{{define "title"}}Guestbook List{{end}}
+{{define "title"}}
+{{$isEditing := (and .Data (or .Data.ID false))}}
+
+{{if $isEditing}}Edit{{else}}New{{end}}
+{{end}}
 
 {{define "content"}}
-
 {{$isEditing := (and .Data (or .Data.ID false))}}
+
 <h1>{{if $isEditing}}Edit{{else}}New{{end}} Guestbook</h1>
 <div>
     {{ $formActionUrl := "/admin/guestbook/new" }} <!-- Default URL -->
@@ -22,10 +26,11 @@
         <br>
         <div>
             <label for="requiresApproval">Messages require approval before being publicly displayed:</label>
-            <input type="checkbox" id="requiresApproval" name="requiresApproval" {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>
+            <input type="checkbox" id="requiresApproval" name="requiresApproval" {{if and $isEditing
+                .Data.RequiresApproval}}checked{{end}}>
             <div>
                 <small>
-                    Tip: if you require message approval then it is recommended you also 
+                    Tip: if you require message approval then it is recommended you also
                     enable email notifications in your <a href="/admin/settings">user settings</a>.
                 </small>
             </div>
@@ -45,38 +50,47 @@
         <br>
         <div>
             <label for="challengeQuestion">Verification Question (leave empty if you don't want to use it):</label>
-            <input 
-                type="text" id="challengeQuestion" name="challengeQuestion"
-                placeholder="Is water wet?"
-                {{if $isEditing}}value="{{.Data.ChallengeQuestion}}" {{end}}
-            >
+            <input type="text" id="challengeQuestion" name="challengeQuestion" placeholder="Is water wet?" {{if
+                $isEditing}}value="{{.Data.ChallengeQuestion}}" {{end}}>
         </div>
         <br>
         <div>
             <label for="challengeHint">Hint that will be shown to users (optional):</label>
-            <input 
-                type="text" id="challengeHint" name="challengeHint" 
-                placeholder="yes/no"
-                {{if $isEditing}}value="{{.Data.ChallengeHint}}" {{end}}
-            >
+            <input type="text" id="challengeHint" name="challengeHint" placeholder="yes/no" {{if
+                $isEditing}}value="{{.Data.ChallengeHint}}" {{end}}>
         </div>
         <br>
         <div>
-            <label for="challengeFailedMessage">Message to show the user in case they fail to answer the challenge:</label>
-            <input 
-                type="text" id="challengeFailedMessage" name="challengeFailedMessage" 
-                placeholder="Please answer yes or no."
-                {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}" {{else}}value="The provided answer to the challenge question is invalid!" {{end}}
-            >
+            <label for="challengeFailedMessage">Message to show the user in case they fail to answer the
+                challenge:</label>
+            <input type="text" id="challengeFailedMessage" name="challengeFailedMessage"
+                placeholder="Please answer yes or no." {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}"
+                {{else}}value="The provided answer to the challenge question is invalid!" {{end}}>
         </div>
         <br>
         <div>
             <label for="challengeAnswer">Expected answer to the verification question (case insensitive):</label>
-            <input 
-                type="text" id="challengeAnswer" name="challengeAnswer" 
-                placeholder="yes"
-                {{if $isEditing}}value="{{.Data.ChallengeAnswer}}" {{end}}
-            >
+            <input type="text" id="challengeAnswer" name="challengeAnswer" placeholder="yes" {{if
+                $isEditing}}value="{{.Data.ChallengeAnswer}}" {{end}}>
+        </div>
+        <br>
+        <h4>Custom CSS</h4>
+        <div>
+            <small>
+                Delete this to revert to the default CSS.
+            </small>
+        </div>
+        <div>
+            <label>Premade styles:</label>
+            <a href="#" data-url="/assets/premade_styles/gray-bear.css" class="style-link">gray-bear</a>
+            | <a href="#" data-url="/assets/premade_styles/webcomic.css" class="style-link">webcomic</a>
+            | <a href="#" data-url="/assets/premade_styles/cherry-mint.css" class="style-link">cherry-mint</a>
+        </div>
+        <br>
+        <div>
+            <label for="customPageCSS">Custom CSS (optional):</label>
+            <textarea id="customPageCSS" name="customPageCSS" placeholder="body { display: awesome; }" rows="10"
+                style="width: 100%; box-sizing: border-box;">{{if $isEditing}}{{.Data.CustomPageCSS}}{{end}}</textarea>
         </div>
         <br>
         <div>
@@ -85,4 +99,33 @@
         <br>
     </form>
 </div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const styleLinks = document.querySelectorAll(".style-link");
+        const customCSSTextarea = document.getElementById("customPageCSS");
+        const styleCache = {};
+
+        styleLinks.forEach(link => {
+            link.addEventListener("click", function (event) {
+                event.preventDefault();
+                const url = this.getAttribute("data-url");
+
+                if (styleCache[url]) {
+                    customCSSTextarea.value = styleCache[url];
+                } else {
+                    fetch(url)
+                        .then(response => response.text())
+                        .then(data => {
+                            styleCache[url] = data; // Cache the fetched style
+                            customCSSTextarea.value = data;
+                        })
+                        .catch(error => {
+                            console.error("Error fetching the style:", error);
+                        });
+                }
+            });
+        });
+    });
+</script>
 {{end}}

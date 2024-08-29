@@ -1,0 +1,101 @@
+/* Adapted from: https://eggramen.neocities.org/code/css_testpages */
+body {
+    background: #f7d5f7 url("/img/cherrie.gif"); /* Replace with your own background */
+    background-size: cover;
+    background-attachment: fixed;
+    background-position: center;
+    font-family: "VT-100", fixedsys, System, monospace;
+    font-size: 13px;
+  }
+  
+  a {
+    color: #3c5832;
+  }
+  
+  a:hover {
+    color: white;
+  }
+  
+  .container {
+    background: #dff7d5;
+    border-radius: 5px;
+    border: 1px solid #618a50;
+    box-shadow: 2px 2px #3c5832;
+    padding: 1em;
+    max-width: 69em;
+    margin: 0 auto;
+  }
+  
+  h1 {
+    text-align: center;
+    color: #3c5832;
+  }
+  
+  input[type="text"],
+  input[type="url"],
+  textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    padding: 0.5em;
+    margin-bottom: 1em;
+    border: 1px solid #618a50;
+    border-radius: 5px;
+    background: #fff;
+  }
+  
+  input[type="submit"] {
+    background: #7aa469;
+    color: white;
+    font-weight: bold;
+    font-size: 1.3em;
+    border: none;
+    border-radius: 5px;
+    padding: 0.5em 1em;
+    cursor: pointer;
+  }
+  
+  input[type="submit"]:hover {
+    background: #618a50;
+  }
+  
+  #guestbooks___guestbook-made-with {
+    text-align: right;
+  }
+  
+  #guestbooks___guestbook-messages-header {
+    margin-top: 1em;
+    color: #3c5832;
+  }
+  
+  #guestbooks___guestbook-messages-container {
+    margin-top: 1em;
+  }
+  
+  hr {
+    border: 0;
+    border-top: 1px dashed #3c5832;
+    margin: 1em 0;
+  }
+  
+  @media (max-width: 1200px) {
+    .container {
+      width: 85%;
+    }
+  }
+  
+  @media (orientation: portrait) {
+    .container {
+      width: 100%;
+      padding: 0;
+      margin: 0 auto;
+    }
+  
+    input[type="text"],
+    input[type="url"],
+    textarea,
+    input[type="submit"] {
+      width: 90%;
+      margin: 0 auto;
+    }
+  }

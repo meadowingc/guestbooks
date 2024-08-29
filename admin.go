@@ -262,6 +262,7 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		challengeFailedMessage := r.FormValue("challengeFailedMessage")
 		challengeAnswer := r.FormValue("challengeAnswer")
 		requiresApproval := r.FormValue("requiresApproval") == "on"
+		customPageCSS := r.FormValue("customPageCSS")
 
 		newGuestbook := Guestbook{
 			WebsiteURL:             websiteURL,
@@ -270,6 +271,7 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 			ChallengeHint:          challengeHint,
 			ChallengeFailedMessage: challengeFailedMessage,
 			ChallengeAnswer:        challengeAnswer,
+			CustomPageCSS:          customPageCSS,
 			AdminUserID:            adminUser.ID,
 		}
 		result := db.Create(&newGuestbook)
@@ -363,6 +365,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	challengeFailedMessage := r.FormValue("challengeFailedMessage")
 	challengeAnswer := r.FormValue("challengeAnswer")
 	requiresApproval := r.FormValue("requiresApproval") == "on"
+	customPageCSS := r.FormValue("customPageCSS")
 
 	var guestbook Guestbook
 	result := db.First(&guestbook, guestbookID)
@@ -383,6 +386,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbook.ChallengeHint = challengeHint
 	guestbook.ChallengeFailedMessage = challengeFailedMessage
 	guestbook.ChallengeAnswer = challengeAnswer
+	guestbook.CustomPageCSS = customPageCSS
 
 	result = db.Save(&guestbook)
 	if result.Error != nil {
@@ -390,7 +394,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/guestbook/"+guestbookID+"/edit", http.StatusSeeOther)
 }
 
 func AdminEditMessage(w http.ResponseWriter, r *http.Request) {

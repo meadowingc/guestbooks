@@ -17,6 +17,8 @@ type Guestbook struct {
 	ChallengeHint          string
 	ChallengeFailedMessage string
 
+	CustomPageCSS string `gorm:"type:text"`
+
 	Messages []Message
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -36,11 +37,16 @@ func loadGuestbookTemplate() *template.Template {
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 
-	var websiteURL string
+	type GuestbookPageData struct {
+		WebsiteURL    string
+		CustomPageCSS string
+	}
+
+	var guestbookData GuestbookPageData
 	result := db.Model(&Guestbook{}).
-		Select("website_url").
+		Select("website_url, custom_page_css").
 		Where("id = ?", guestbookID).
-		Scan(&websiteURL)
+		Scan(&guestbookData)
 
 	if result.Error != nil {
 		http.Error(w, "Error querying the database", http.StatusInternalServerError)
@@ -56,12 +62,49 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		guestbookTemplate = loadGuestbookTemplate()
 	}
 
+	// manually sanitize the CSS to prevent XSS
+	patterns := []string{
+		`<style[^>]*>.*?</style>`,
+		`<script[^>]*>.*?</script>`,
+		`@import\s+url\([^\)]+\)`,
+		`expression\([^\)]+\)`,
+		`javascript:`,
+		`behavior:`,
+		`url\([^\)]+\)`,
+		`data:`,
+		`mhtml:`,
+		`vbscript:`,
+		`livescript:`,
+		`moz-binding:`,
+		`chrome:`,
+		`<svg[^>]*>.*?</svg>`,
+	}
+
+	compiledPatterns := make([]*regexp.Regexp, len(patterns))
+	for i, pattern := range patterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			// Handle the error, e.g., log it and continue
+			log.Printf("Error compiling pattern %s: %v", pattern, err)
+			continue
+		}
+		compiledPatterns[i] = re
+	}
+
+	for _, re := range compiledPatterns {
+		if re != nil {
+			guestbookData.CustomPageCSS = re.ReplaceAllString(guestbookData.CustomPageCSS, "")
+		}
+	}
+
 	data := struct {
-		ID         string
-		WebsiteURL string
+		ID            string
+		WebsiteURL    string
+		CustomPageCSS template.CSS
 	}{
-		ID:         guestbookID,
-		WebsiteURL: websiteURL,
+		ID:            guestbookID,
+		WebsiteURL:    guestbookData.WebsiteURL,
+		CustomPageCSS: template.CSS(guestbookData.CustomPageCSS),
 	}
 
 	err := guestbookTemplate.Execute(w, data)
