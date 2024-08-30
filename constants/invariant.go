@@ -6,4 +6,5 @@ const (
 	MAX_MESSAGES_TO_SHOW = 500
 	MAX_MESSAGE_LENGTH   = 2500
 	BUILT_IN_THEMES_DIR  = "assets/premade_styles"
+	MAX_CSS_LENGTH       = 10_000
 )
