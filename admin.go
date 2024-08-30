@@ -262,7 +262,24 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		challengeFailedMessage := r.FormValue("challengeFailedMessage")
 		challengeAnswer := r.FormValue("challengeAnswer")
 		requiresApproval := r.FormValue("requiresApproval") == "on"
-		customPageCSS := r.FormValue("customPageCSS")
+		customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
+
+		isCssValid, errorMsg := validateCSS(customPageCSS)
+		if !isCssValid {
+			http.Error(w, errorMsg, http.StatusBadRequest)
+			return
+		}
+
+		// if css is one of our built-in themes, then just store the theme name
+		themeName, err := CompareCSSWithThemes(customPageCSS)
+		if err != nil {
+			http.Error(w, "Error checking provided CSS with built-in themes", http.StatusInternalServerError)
+			return
+		}
+
+		if themeName != "" {
+			customPageCSS = "<<built__in>>" + themeName + "<</built__in>>"
+		}
 
 		newGuestbook := Guestbook{
 			WebsiteURL:             websiteURL,
@@ -365,7 +382,24 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	challengeFailedMessage := r.FormValue("challengeFailedMessage")
 	challengeAnswer := r.FormValue("challengeAnswer")
 	requiresApproval := r.FormValue("requiresApproval") == "on"
-	customPageCSS := r.FormValue("customPageCSS")
+	customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
+
+	isCssValid, errorMsg := validateCSS(customPageCSS)
+	if !isCssValid {
+		http.Error(w, errorMsg, http.StatusBadRequest)
+		return
+	}
+
+	// if css is one of our built-in themes, then just store the theme name
+	themeName, err := CompareCSSWithThemes(customPageCSS)
+	if err != nil {
+		http.Error(w, "Error checking provided CSS with built-in themes", http.StatusInternalServerError)
+		return
+	}
+
+	if themeName != "" {
+		customPageCSS = "<<built__in>>" + themeName + "<</built__in>>"
+	}
 
 	var guestbook Guestbook
 	result := db.First(&guestbook, guestbookID)

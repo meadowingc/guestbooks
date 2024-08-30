@@ -10,6 +10,8 @@
 
     {{if eq .CustomPageCSS ""}}
     <link rel="stylesheet" href="/assets/css/chota.min.css">
+    {{ else if not (eq .SelectedBuiltInTheme "")}}
+    <link rel="stylesheet" href="/assets/premade_styles/{{.SelectedBuiltInTheme}}">
     {{else}}
     <style>
         {{.CustomPageCSS}}

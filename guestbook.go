@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -62,49 +61,22 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		guestbookTemplate = loadGuestbookTemplate()
 	}
 
-	// manually sanitize the CSS to prevent XSS
-	patterns := []string{
-		`<style[^>]*>.*?</style>`,
-		`<script[^>]*>.*?</script>`,
-		`@import\s+url\([^\)]+\)`,
-		`expression\([^\)]+\)`,
-		`javascript:`,
-		`behavior:`,
-		`url\([^\)]+\)`,
-		`data:`,
-		`mhtml:`,
-		`vbscript:`,
-		`livescript:`,
-		`moz-binding:`,
-		`chrome:`,
-		`<svg[^>]*>.*?</svg>`,
-	}
-
-	compiledPatterns := make([]*regexp.Regexp, len(patterns))
-	for i, pattern := range patterns {
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			// Handle the error, e.g., log it and continue
-			log.Printf("Error compiling pattern %s: %v", pattern, err)
-			continue
-		}
-		compiledPatterns[i] = re
-	}
-
-	for _, re := range compiledPatterns {
-		if re != nil {
-			guestbookData.CustomPageCSS = re.ReplaceAllString(guestbookData.CustomPageCSS, "")
-		}
+	selectedBuiltInTheme := ""
+	if strings.HasPrefix(guestbookData.CustomPageCSS, "<<built__in>>") {
+		selectedBuiltInTheme = strings.TrimPrefix(guestbookData.CustomPageCSS, "<<built__in>>")
+		selectedBuiltInTheme = strings.TrimSuffix(selectedBuiltInTheme, "<</built__in>>")
 	}
 
 	data := struct {
-		ID            string
-		WebsiteURL    string
-		CustomPageCSS template.CSS
+		ID                   string
+		WebsiteURL           string
+		CustomPageCSS        template.CSS
+		SelectedBuiltInTheme string
 	}{
-		ID:            guestbookID,
-		WebsiteURL:    guestbookData.WebsiteURL,
-		CustomPageCSS: template.CSS(guestbookData.CustomPageCSS),
+		ID:                   guestbookID,
+		WebsiteURL:           guestbookData.WebsiteURL,
+		CustomPageCSS:        template.CSS(guestbookData.CustomPageCSS),
+		SelectedBuiltInTheme: selectedBuiltInTheme,
 	}
 
 	err := guestbookTemplate.Execute(w, data)

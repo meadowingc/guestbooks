@@ -16,7 +16,7 @@
     {{ $formActionUrl = printf "/admin/guestbook/%d/edit" .Data.ID }} <!-- Overwrite URL if $isEditing is truthy -->
     {{ end }}
 
-    <form action="{{ $formActionUrl }}" method="post">
+    <form id="guestbook-edit-form" action="{{ $formActionUrl }}" method="post">
         <h4>Basic info</h4>
         <div>
             <label for="websiteURL">Website URL:</label>
@@ -106,6 +106,38 @@
         const customCSSTextarea = document.getElementById("customPageCSS");
         const styleCache = {};
 
+        // Function to fetch and cache theme data
+        function fetchAndCacheTheme(url) {
+            return fetch(url)
+                .then(response => response.text())
+                .then(data => {
+                    styleCache[url] = data; // Cache the fetched style
+                    return data;
+                })
+                .catch(error => {
+                    console.error("Error fetching the style:", error);
+                    return null;
+                });
+        }
+
+        // Check if the current value of the textarea is a built-in theme reference
+        const initialCSSValue = customCSSTextarea.value.trim();
+
+        const builtInPattern = /^<<built__in>>(.*)<<\/built__in>>$/;
+        const match = initialCSSValue.match(builtInPattern);
+
+        if (match) {
+            const themeName = match[1];
+            const themeUrl = `/assets/premade_styles/${themeName}`;
+
+            fetchAndCacheTheme(themeUrl).then(data => {
+                if (data) {
+                    customCSSTextarea.value = data;
+                }
+            });
+        }
+
+
         styleLinks.forEach(link => {
             link.addEventListener("click", function (event) {
                 event.preventDefault();
@@ -114,17 +146,32 @@
                 if (styleCache[url]) {
                     customCSSTextarea.value = styleCache[url];
                 } else {
-                    fetch(url)
-                        .then(response => response.text())
-                        .then(data => {
-                            styleCache[url] = data; // Cache the fetched style
+                    fetchAndCacheTheme(url).then(data => {
+                        if (data) {
                             customCSSTextarea.value = data;
-                        })
-                        .catch(error => {
-                            console.error("Error fetching the style:", error);
-                        });
+                        }
+                    });
                 }
             });
+        });
+
+        const form = document.querySelector("form#guestbook-edit-form");
+        form.addEventListener("submit", function (event) {
+            const cssContent = customCSSTextarea.value.trim();
+            const builtInPrefix = "/* [::Built in::] ";
+
+            let isBuiltInTheme = false;
+            for (const url in styleCache) {
+                if (styleCache[url].trim() === cssContent) {
+                    isBuiltInTheme = true;
+                    break;
+                }
+            }
+
+            if (!isBuiltInTheme && cssContent.startsWith(builtInPrefix)) {
+                const updatedCSS = cssContent.replace("/* [::Built in::] ", "/* ").trim();
+                customCSSTextarea.value = updatedCSS;
+            }
         });
     });
 </script>
