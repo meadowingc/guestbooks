@@ -81,10 +81,15 @@
             </small>
         </div>
         <div>
-            <label>Premade styles:</label>
-            <a href="#" data-url="/assets/premade_styles/gray-bear.css" class="style-link">gray-bear</a>
-            | <a href="#" data-url="/assets/premade_styles/webcomic.css" class="style-link">webcomic</a>
-            | <a href="#" data-url="/assets/premade_styles/cherry-mint.css" class="style-link">cherry-mint</a>
+            <label for="premadeStyles">Premade styles:</label>
+            <select id="premadeStyles" class="style-dropdown">
+                <option value="" disabled selected>Select a style</option>
+                <option value="/assets/premade_styles/gray-bear.css">gray-bear</option>
+                <option value="/assets/premade_styles/webcomic.css">webcomic</option>
+                <option value="/assets/premade_styles/cherry-mint.css">cherry-mint</option>
+                <option value="/assets/premade_styles/cabernete.css">cabernete</option>
+                <option value="/assets/premade_styles/peaceful-sky.css">peaceful-sky</option>
+            </select>
         </div>
         <br>
         <div>
@@ -102,7 +107,7 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const styleLinks = document.querySelectorAll(".style-link");
+        const styleDropdown = document.getElementById("premadeStyles");
         const customCSSTextarea = document.getElementById("customPageCSS");
         const styleCache = {};
 
@@ -122,7 +127,6 @@
 
         // Check if the current value of the textarea is a built-in theme reference
         const initialCSSValue = customCSSTextarea.value.trim();
-
         const builtInPattern = /^<<built__in>>(.*)<<\/built__in>>$/;
         const match = initialCSSValue.match(builtInPattern);
 
@@ -133,26 +137,23 @@
             fetchAndCacheTheme(themeUrl).then(data => {
                 if (data) {
                     customCSSTextarea.value = data;
+                    styleDropdown.value = themeUrl;
                 }
             });
         }
 
+        styleDropdown.addEventListener("change", function () {
+            const url = this.value;
 
-        styleLinks.forEach(link => {
-            link.addEventListener("click", function (event) {
-                event.preventDefault();
-                const url = this.getAttribute("data-url");
-
-                if (styleCache[url]) {
-                    customCSSTextarea.value = styleCache[url];
-                } else {
-                    fetchAndCacheTheme(url).then(data => {
-                        if (data) {
-                            customCSSTextarea.value = data;
-                        }
-                    });
-                }
-            });
+            if (styleCache[url]) {
+                customCSSTextarea.value = styleCache[url];
+            } else {
+                fetchAndCacheTheme(url).then(data => {
+                    if (data) {
+                        customCSSTextarea.value = data;
+                    }
+                });
+            }
         });
 
         const form = document.querySelector("form#guestbook-edit-form");

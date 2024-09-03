@@ -1,0 +1,151 @@
+/* [::Built in::] Adapted from: https://eggramen.neocities.org/code/css_testpages */
+
+body {
+  background: #98e9f4;
+  background-attachment: fixed;
+  background-position: center;
+  background-size: cover;
+  color: #111123;
+  font-family: "Open Sans", "Helvetica", sans-serif;
+  font-size: 15px;
+  overflow-x: auto;
+  margin: 0;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.container {
+  margin: 30px auto 40px;
+  width: 900px;
+  padding: 25px;
+  border: 3px solid #1894ca;
+  border-radius: 5px;
+  background: #aae6ff;
+  min-height: 650px;
+  text-align: left;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 1;
+}
+
+h1#title {
+  font-size: 24px;
+  color: #1d1c32;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+#guestbooks___guestbook-form-container {
+  margin-bottom: 20px;
+}
+
+.guestbooks___input-container {
+  margin-bottom: 15px;
+}
+
+.guestbooks___input-container input,
+.guestbooks___input-container textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #1d1c32;
+  border-radius: 3px;
+  box-sizing: border-box;
+  transition: border-color 0.3s;
+}
+
+.guestbooks___input-container input:focus,
+.guestbooks___input-container textarea:focus {
+  border-color: #1894ca;
+  outline: none;
+}
+
+/* Submit Button */
+#guestbooks___guestbook-form input[type="submit"] {
+  background: #1d1c32;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+#guestbooks___guestbook-form input[type="submit"]:hover {
+  background: #774459;
+}
+
+#guestbooks___error-message {
+  color: red;
+  margin-top: 10px;
+}
+
+#guestbooks___guestbook-made-with {
+  text-align: right;
+  margin-top: 20px;
+}
+
+#guestbooks___guestbook-made-with a {
+  text-decoration: none;
+  font-weight: bold;
+}
+
+#guestbooks___guestbook-made-with a:hover {
+  text-decoration: underline;
+}
+
+#guestbooks___guestbook-messages-header {
+  font-size: 18px;
+  color: #1d1c32;
+  margin-top: 20px;
+}
+
+#guestbooks___guestbook-messages-container {
+  margin-top: 20px;
+}
+
+a {
+  color: #045086;
+  transition: color 0.3s;
+}
+
+a:hover {
+  color: #1894ca;
+}
+
+small {
+  font-size: 10px;
+}
+
+@media (max-width: 950px) {
+  .container {
+    font-size: 16px;
+    width: 700px;
+  }
+}
+
+@media (max-width: 750px) {
+  .container {
+    font-size: 17px;
+    width: 550px;
+  }
+}
+
+@media (max-width: 600px) {
+  .container {
+    min-width: 150px;
+    max-width: 530px;
+    box-sizing: border-box;
+  }
+}
+
+@media (orientation: portrait) {
+  body {
+    font-size: 20px;
+  }
+  .container {
+    width: 95%;
+    margin: 0 auto;
+    margin-top: 30px;
+  }
+}
