@@ -584,7 +584,7 @@ func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	result := db.Where(&AdminUser{EmailVerificationToken: token}).First(&user)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			http.Error(w, "Invalid token", http.StatusBadRequest)
+			http.Error(w, "Invalid token. It could be that the token is mispelled or, more likely, you've already confirmed your email. Verification tokens are single use!", http.StatusBadRequest)
 		} else {
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
