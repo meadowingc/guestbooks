@@ -111,6 +111,7 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(r.FormValue("name"))
 	text := strings.TrimSpace(r.FormValue("text"))
+	redirectToUrl := strings.TrimSpace(r.FormValue("redirect_to_url"))
 	website := strings.TrimSpace(r.FormValue("website"))
 	var websitePtr *string
 	if website != "" {
@@ -211,5 +212,11 @@ If you do need some help then please reach out through here https://meadow.cafe/
 		}
 	}
 
-	http.Redirect(w, r, "/guestbook/"+guestbookID, http.StatusSeeOther)
+	//	if user provided a redirect URL, redirect to that URL, otherwise
+	//	redirect to the guestbook page
+	if redirectToUrl != "" {
+		http.Redirect(w, r, redirectToUrl, http.StatusSeeOther)
+	} else {
+		http.Redirect(w, r, "/guestbook/"+guestbookID, http.StatusSeeOther)
+	}
 }
