@@ -11,9 +11,15 @@
     you to style the form.
 </p>
 
+<ul>
+    <li><a href="#embed-with-an-iframe">Embed with an iframe</a></li>
+    <li><a href="#embed-with-javascript">Embed with JavaScript</a></li>
+    <li><a href="#extra-parameters">Extra parameters</a></li>
+</ul>
+
 
 <div class="embed-instructions">
-    <h2>Embed with an iframe</h2>
+    <h2 id="embed-with-an-iframe">Embed with an iframe</h2>
     <p>Copy and paste the following code into your website's HTML to embed this guestbook form:</p>
     <pre>
 <code class="language-html" data-lang="html">
@@ -23,7 +29,7 @@
 </div>
 
 <div class="embed-instructions">
-    <h2>Embed with JavaScript</h2>
+    <h2 id="embed-with-javascript">Embed with JavaScript</h2>
     <p>
         Copy and paste the following code into your website's HTML where you to embed this guestbook form. Feel free to
         edit the HTML as you see fit but don't change the <code>name</code> attribute of the <code>input</code> tags,
@@ -59,5 +65,32 @@
 &lt;div id="guestbooks___guestbook-messages-container">&lt;/div>  
 </code>
 </pre>
+</div>
+
+<div class="embed-instructions">
+    <h2 id="extra-parameters">Extra parameters</h2>
+    <p>
+        This section is for advanced users who want to customize how the guestbook behaves. Normal users
+        don't need to worry about any of this, unless they know what they're doing.
+    </p>
+    <p>
+        Guestbooks supports adding some hidden <code>input</code> tags to the form to customize the guestbook's
+        behavior. The following parameters are supported:
+    </p>
+    
+    <ul>
+        <li><code>redirect_to_url</code>: Use this parameter to specify a URL to which the user will be redirected after submitting a message. Example:
+            <pre><code class="language-html" data-lang="html">&lt;input type="hidden" 
+       id="redirect_to_url" 
+       name="redirect_to_url" 
+       value="https://meadow.cafe/thank-you-for-signing-my-guestbook">
+</code></pre>
+            <p>
+                By default, the embed instructions use AJAX to post the message, so it doesn't matter where the user is redirected. However, if you don't use AJAX (e.g., you don't want to use JavaScript), then you need to worry about where the user is redirected after submitting the form.
+            </p>
+        </li>
+    </ul>
+
+
 </div>
 {{end}}
