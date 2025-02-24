@@ -113,7 +113,9 @@ func initRouter() *chi.Mux {
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
 		r.Get("/settings", AdminUserSettings)
+
 		r.Post("/settings", AdminUserSettings)
+		r.Post("/change-password", AdminChangePassword)
 
 		r.Get("/signin", AdminSignIn)
 		r.Post("/signin", AdminSignIn)

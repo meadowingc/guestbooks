@@ -573,6 +573,39 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func AdminChangePassword(w http.ResponseWriter, r *http.Request) {
+	currentPassword := r.FormValue("current-password")
+	newPassword := r.FormValue("new-password")
+	confirmPassword := r.FormValue("confirm-password")
+
+	if newPassword != confirmPassword {
+		http.Error(w, "New passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	err := bcrypt.CompareHashAndPassword([]byte(currentUser.PasswordHash), []byte(currentPassword))
+	if err != nil {
+		http.Error(w, "Current password is incorrect", http.StatusUnauthorized)
+		return
+	}
+
+	newPasswordHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Error creating account: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	currentUser.PasswordHash = newPasswordHash
+	result := db.Save(&currentUser)
+	if result.Error != nil {
+		http.Error(w, "Error updating password", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
+}
+
 func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
