@@ -84,3 +84,23 @@ func SendVerificationEmail(recipient, token string) error {
 
 	return SendMail([]string{recipient}, subject, body)
 }
+
+func SendPasswordResetEmail(recipient, token string) error {
+	subject := "[Guestbooks] Password Reset Request"
+	resetLink := fmt.Sprintf(constants.PUBLIC_URL+"/reset-password?token=%s", token)
+	body := fmt.Sprintf(`Hello,
+
+You recently requested to reset your password for your Guestbooks account.
+Click the link below to reset it:
+
+%s
+
+If you did not request a password reset, please ignore this email or contact support if you have concerns.
+
+This password reset link is only valid for 24 hours.
+
+Regards,
+The Guestbooks Team`, resetLink)
+
+	return SendMail([]string{recipient}, subject, body)
+}

@@ -19,7 +19,20 @@
     <small>Don't have an account? Sign up <a href="/admin/signup">here</a>.</small>
 </div>
 <div>
+    <small>Forgot your password? <a href="/forgot-password">Reset it here</a>.</small>
+</div>
+<div>
     <small>Note that by using <i>Guestbooks</i> you agree to our <a href="/terms-and-conditions">Terms and
             Conditions</a>.</small>
 </div>
+
+{{if .Data}}
+<script>
+    // Show success message if redirected after password reset
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('password_reset') === 'success') {
+        alert('Your password has been reset successfully. Please sign in with your new password.');
+    }
+</script>
+{{end}}
 {{end}}

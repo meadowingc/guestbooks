@@ -105,10 +105,15 @@ func initRouter() *chi.Mux {
 	})
 
 	r.Get("/verify-email", VerifyEmailHandler)
+	r.Get("/reset-password", ResetPasswordFormHandler)
+	r.Post("/reset-password", ResetPasswordHandler)
 
 	r.Get("/terms-and-conditions", func(w http.ResponseWriter, r *http.Request) {
 		renderAdminTemplate(w, r, "terms_and_conditions", nil)
 	})
+
+	r.Get("/forgot-password", ForgotPasswordHandler)
+	r.Post("/forgot-password", ForgotPasswordHandler)
 
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)

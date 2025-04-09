@@ -42,6 +42,8 @@ type AdminUser struct {
 	Email                  string         `gorm:""`
 	EmailVerified          bool           `gorm:"default:false"`
 	EmailVerificationToken string         `gorm:"index"`
+	PasswordResetToken     string         `gorm:"index"`
+	PasswordResetExpiry    int64          `gorm:""`
 	EmailNotifications     bool           `gorm:""`
 	Guestbooks             []Guestbook    `gorm:"foreignKey:AdminUserID"`
 }

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -634,4 +635,136 @@ func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Redirect to a confirmation page or display a success message
 	w.Write([]byte("Email verified successfully!"))
+}
+
+func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		renderAdminTemplate(w, r, "forgot_password", nil)
+		return
+	}
+
+	email := r.FormValue("email")
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	var user AdminUser
+	result := db.Where(&AdminUser{
+		Email:         email,
+		EmailVerified: true,
+	}).First(&user)
+	if result.Error != nil {
+		// Don't reveal whether the email exists for security reasons
+		// Just show success message anyway
+		renderAdminTemplate(w, r, "password_reset_sent", nil)
+		return
+	}
+
+	token, err := generateAuthToken()
+	if err != nil {
+		http.Error(w, "Error processing request", http.StatusInternalServerError)
+		return
+	}
+
+	// Set token expiration (24 hours from now)
+	expiryTime := time.Now().Add(24 * time.Hour).Unix()
+
+	user.PasswordResetToken = token
+	user.PasswordResetExpiry = expiryTime
+	result = db.Save(&user)
+	if result.Error != nil {
+		http.Error(w, "Error processing request", http.StatusInternalServerError)
+		return
+	}
+
+	go SendPasswordResetEmail(user.Email, token)
+
+	renderAdminTemplate(w, r, "password_reset_sent", nil)
+}
+
+func ResetPasswordFormHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		return
+	}
+
+	// Check if token is valid and not expired
+	var user AdminUser
+	result := db.Where(&AdminUser{PasswordResetToken: token}).First(&user)
+	if result.Error != nil {
+		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		return
+	}
+
+	if user.PasswordResetExpiry < time.Now().Unix() {
+		http.Error(w, "Reset link has expired. Please request a new one.", http.StatusBadRequest)
+		return
+	}
+
+	data := struct {
+		Token string
+	}{
+		Token: token,
+	}
+
+	renderAdminTemplate(w, r, "reset_password", data)
+}
+
+func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := r.FormValue("token")
+	newPassword := r.FormValue("new-password")
+	confirmPassword := r.FormValue("confirm-password")
+
+	if token == "" {
+		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		return
+	}
+
+	if newPassword == "" || confirmPassword == "" {
+		http.Error(w, "Passwords cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	if newPassword != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	var user AdminUser
+	result := db.Where(&AdminUser{PasswordResetToken: token}).First(&user)
+	if result.Error != nil {
+		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		return
+	}
+
+	if user.PasswordResetExpiry < time.Now().Unix() {
+		http.Error(w, "Reset link has expired. Please request a new one.", http.StatusBadRequest)
+		return
+	}
+
+	newPasswordHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Error resetting password: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update user's password and clear reset token
+	user.PasswordHash = newPasswordHash
+	user.PasswordResetToken = ""
+	user.PasswordResetExpiry = 0
+
+	result = db.Save(&user)
+	if result.Error != nil {
+		http.Error(w, "Error resetting password", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/signin?password_reset=success", http.StatusSeeOther)
 }
