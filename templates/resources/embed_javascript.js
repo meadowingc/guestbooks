@@ -4,6 +4,12 @@
     "guestbooks___guestbook-messages-container"
   );
 
+  // paging state
+  const pageSize = 20;
+  var currentPage = 1;
+  var isLoading = false;
+  var hasMorePages = true;
+
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
 
@@ -23,7 +29,7 @@
 
     if (response.ok) {
       form.reset();
-      guestbooks___loadMessages();
+      guestbooks___loadMessages(true); // clear existing messages
       errorContainer.innerHTML = "";
     } else {
       const err = await response.text();
@@ -63,24 +69,45 @@
     `;
   }
 
-  function guestbooks___loadMessages() {
+  function guestbooks___loadMessages(reset) {
+    // Prevent multiple simultaneous requests
+    if (isLoading) return;
+
+    // Don't load if we've reached the end
+    if (!hasMorePages && !reset) return;
+
+    // Reset to first page if this is a reset
+    if (reset) {
+      currentPage = 1;
+      hasMorePages = true;
+    }
+
+    isLoading = true;
+
     var apiUrl =
-      "{{.HostUrl}}/api/v1/get-guestbook-messages/{{.Guestbook.ID}}";
+      "{{.HostUrl}}/api/v1/get-guestbook-messages/{{.Guestbook.ID}}?page=" + currentPage + "&limit=" + pageSize;
     fetch(apiUrl)
       .then(function (response) {
         return response.json();
       })
-      .then(function (messages) {
-        if (messages.length === 0) {
+      .then(function (data) {
+        var messages = data.messages || [];
+        var pagination = data.pagination || {};
+
+        hasMorePages = pagination.hasNext || false;
+
+        if (messages.length === 0 && currentPage === 1) {
           messagesContainer.innerHTML = "<p>There are no messages on this guestbook.</p>";
         } else {
-          messages.sort(function (a, b) {
-            return new Date(b.CreatedAt) - new Date(a.CreatedAt);
-          });
+          // Clear container only on reset (new submission or initial load)
+          if (reset) {
+            messagesContainer.innerHTML = "";
+          }
 
-          messagesContainer.innerHTML = "";
+          // Messages are already sorted by created_at DESC from the API
           messages.forEach(function (message) {
             var messageContainer = document.createElement("div");
+            messageContainer.className = "guestbook-message";
 
             var messageHeader = document.createElement("p");
             var boldElement = document.createElement("b");
@@ -120,12 +147,50 @@
             messagesContainer.appendChild(messageContainer);
           });
         }
+
+        // Increment page for next load
+        currentPage++;
+        isLoading = false;
+
+        // Re-observe the last message for infinite scroll
+        if (window.guestbooks___observeLastMessage) {
+          window.guestbooks___observeLastMessage();
+        }
       })
       .catch(function (error) {
         console.error("Error fetching messages:", error);
+        isLoading = false;
       });
   }
 
+  function guestbooks___setupInfiniteScroll() {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting && hasMorePages && !isLoading) {
+          guestbooks___loadMessages(false); // append to existing messages
+        }
+      });
+    }, {
+      root: null, // Use the viewport as the root
+      rootMargin: '200px', // Load when 200px away from the bottom
+      threshold: 0.1
+    });
+
+
+    // Re-observe the last message whenever messages are loaded
+    // Initial observation and re-observe after each load
+    window.guestbooks___observeLastMessage = function () {
+      var messages = messagesContainer.querySelectorAll('.guestbook-message');
+      if (messages.length > 0) {
+        // Stop observing previous last message
+        observer.disconnect();
+        // Observe the new last message
+        observer.observe(messages[messages.length - 1]);
+      }
+    };
+  }
+
   guestbooks___populateQuestionChallenge();
-  guestbooks___loadMessages();
+  guestbooks___loadMessages(true); // Initial load
+  guestbooks___setupInfiniteScroll();
 })();

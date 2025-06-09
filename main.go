@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"guestbook/constants"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	textTemplate "text/template"
 	"time"
 
 	"github.com/go-chi/cors"
@@ -174,7 +174,7 @@ func initRouter() *chi.Mux {
 		r.Route("/js", func(r chi.Router) {
 			r.Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
 				guestbookID := chi.URLParam(r, "guestbookID")
-				template, err := template.ParseFiles("templates/resources/embed_javascript.js")
+				template, err := textTemplate.ParseFiles("templates/resources/embed_javascript.js")
 				if err != nil {
 					log.Fatalf("Error parsing guestbook page template: %v", err)
 				}
@@ -214,16 +214,60 @@ func initRouter() *chi.Mux {
 					log.Fatal(err)
 				}
 
+				pageStr := r.URL.Query().Get("page")
+				limitStr := r.URL.Query().Get("limit")
+
+				page := 1
+				limit := 20 // Default page size
+
+				if pageStr != "" {
+					if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+						page = p
+					}
+				}
+
+				if limitStr != "" {
+					if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+						limit = l
+					}
+				}
+
+				offset := (page - 1) * limit
+
+				var totalCount int64
+				countResult := db.Model(&Message{}).Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).Count(&totalCount)
+				if countResult.Error != nil {
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
+
 				var messages []Message
 				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).
-					Limit(constants.MAX_MESSAGES_TO_SHOW).
+					Order("created_at DESC").
+					Limit(limit).
+					Offset(offset).
 					Find(&messages)
 				if result.Error != nil {
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 					return
 				}
+
+				totalPages := int((totalCount + int64(limit) - 1) / int64(limit))
+
+				response := map[string]interface{}{
+					"messages": messages,
+					"pagination": map[string]interface{}{
+						"page":        page,
+						"limit":       limit,
+						"total":       totalCount,
+						"totalPages":  totalPages,
+						"hasNext":     page < totalPages,
+						"hasPrevious": page > 1,
+					},
+				}
+
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(messages)
+				json.NewEncoder(w).Encode(response)
 			})
 		})
 	})
