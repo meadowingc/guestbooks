@@ -214,6 +214,29 @@ func initRouter() *chi.Mux {
 					log.Fatal(err)
 				}
 
+				// v1 API - return all messages at top level of response, without pagination (backward compatibility)
+				var messages []Message
+				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).
+					Order("created_at DESC").
+					Find(&messages)
+				if result.Error != nil {
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(messages)
+			})
+		})
+
+		r.Route("/v2", func(r chi.Router) {
+			r.Get("/get-guestbook-messages/{guestbookID}", func(w http.ResponseWriter, r *http.Request) {
+				guestbookID := chi.URLParam(r, "guestbookID")
+				guestbookIDUint, err := strconv.ParseUint(guestbookID, 10, 32)
+				if err != nil {
+					log.Fatal(err)
+				}
+
 				pageStr := r.URL.Query().Get("page")
 				limitStr := r.URL.Query().Get("limit")
 

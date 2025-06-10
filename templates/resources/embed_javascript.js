@@ -85,7 +85,7 @@
     isLoading = true;
 
     var apiUrl =
-      "{{.HostUrl}}/api/v1/get-guestbook-messages/{{.Guestbook.ID}}?page=" + currentPage + "&limit=" + pageSize;
+      "{{.HostUrl}}/api/v2/get-guestbook-messages/{{.Guestbook.ID}}?page=" + currentPage + "&limit=" + pageSize;
     fetch(apiUrl)
       .then(function (response) {
         return response.json();
