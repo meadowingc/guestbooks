@@ -77,7 +77,21 @@
         <h4>Custom CSS</h4>
         <div>
             <small>
-                Delete this to revert to the default CSS.
+                <b>Note:</b> If you want to go back to the default theme then delete the contents of the box below and save.
+            </small>
+        </div>
+        <div>
+            <small>
+                You can include custom fonts using <code>@font-face</code>.
+                <pre style="white-space: pre-wrap; background: #f6f8fa; padding: .5em; border-radius: 6px;">
+@font-face {
+    font-family: 'MyFont';
+    src: url('https://example.com/fonts/MyFont.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+body { font-family: 'MyFont', system-ui, sans-serif; }</pre>
             </small>
         </div>
         <div>
