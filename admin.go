@@ -392,7 +392,26 @@ func AdminEditGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderAdminTemplate(w, r, "create_edit_guestbook", guestbook)
+	// Determine selected theme; client fetches CSS for built-ins
+	themeName := ""
+	if strings.HasPrefix(guestbook.CustomPageCSS, "<<built__in>>") {
+		themeName = strings.TrimPrefix(guestbook.CustomPageCSS, "<<built__in>>")
+		themeName = strings.TrimSuffix(themeName, "<</built__in>>")
+	}
+
+	// Build view model embedding Guestbook fields and selected theme URL
+	data := struct {
+		Guestbook
+		SelectedTheme string
+	}{
+		guestbook,
+		"",
+	}
+	if themeName != "" {
+		data.SelectedTheme = "/assets/premade_styles/" + themeName
+	}
+
+	renderAdminTemplate(w, r, "create_edit_guestbook", data)
 }
 
 func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {

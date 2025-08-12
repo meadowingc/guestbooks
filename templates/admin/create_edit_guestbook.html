@@ -94,12 +94,12 @@
             <div class="form-group">
                 <label for="premadeStyles">Choose a Premade Theme</label>
                 <select id="premadeStyles" class="style-dropdown">
-                    <option value="" disabled selected>Select a theme...</option>
-                    <option value="/assets/premade_styles/gray-bear.css">🐻 Gray Bear</option>
-                    <option value="/assets/premade_styles/webcomic.css">🎨 Webcomic</option>
-                    <option value="/assets/premade_styles/cherry-mint.css">🍒 Cherry Mint</option>
-                    <option value="/assets/premade_styles/cabernete.css">🍷 Cabernet</option>
-                    <option value="/assets/premade_styles/peaceful-sky.css">☁️ Peaceful Sky</option>
+                    <option value="" disabled {{if not (and .Data .Data.SelectedTheme)}}selected{{end}}>Select a theme...</option>
+                    <option value="/assets/premade_styles/gray-bear.css" {{if and .Data (eq .Data.SelectedTheme "/assets/premade_styles/gray-bear.css")}}selected{{end}}>🐻 Gray Bear</option>
+                    <option value="/assets/premade_styles/webcomic.css" {{if and .Data (eq .Data.SelectedTheme "/assets/premade_styles/webcomic.css")}}selected{{end}}>🎨 Webcomic</option>
+                    <option value="/assets/premade_styles/cherry-mint.css" {{if and .Data (eq .Data.SelectedTheme "/assets/premade_styles/cherry-mint.css")}}selected{{end}}>🍒 Cherry Mint</option>
+                    <option value="/assets/premade_styles/cabernete.css" {{if and .Data (eq .Data.SelectedTheme "/assets/premade_styles/cabernete.css")}}selected{{end}}>🍷 Cabernet</option>
+                    <option value="/assets/premade_styles/peaceful-sky.css" {{if and .Data (eq .Data.SelectedTheme "/assets/premade_styles/peaceful-sky.css")}}selected{{end}}>☁️ Peaceful Sky</option>
                 </select>
             </div>
             
@@ -109,13 +109,14 @@
                     <div class="code-section">
                         <div class="code-header">
                             <span class="code-label">CSS</span>
-                            <button type="button" class="btn btn-sm" onclick="formatCSS()">Format</button>
+                            <div class="action-group">
+                                <button type="button" class="btn btn-sm" onclick="formatCSS()">Format</button>
+                            </div>
                         </div>
                         <div class="css-editor-wrapper">
-                            <pre class="line-numbers" style="margin: 0;"><code id="css-highlighted" class="language-css"></code></pre>
                             <textarea id="customPageCSS" name="customPageCSS" 
                                 placeholder="/* Enter your custom CSS here */&#10;body {&#10;  font-family: 'Georgia', serif;&#10;  background: #f5f5f5;&#10;}" 
-                                rows="12" spellcheck="false">{{if $isEditing}}{{.Data.CustomPageCSS}}{{end}}</textarea>
+                                rows="12" spellcheck="false" wrap="off">{{if $isEditing}}{{.Data.CustomPageCSS}}{{end}}</textarea>
                         </div>
                     </div>
                 </div>
@@ -136,6 +137,30 @@
         const styleDropdown = document.getElementById("premadeStyles");
         const customCSSTextarea = document.getElementById("customPageCSS");
         const styleCache = {};
+        const serverSelectedTheme = "{{with .Data.SelectedTheme}}{{.}}{{end}}";
+        if (serverSelectedTheme) {
+            styleDropdown.value = serverSelectedTheme;
+        }
+
+        // Detect currently selected theme by comparing textarea CSS to built-ins
+        function detectFromCSS() {
+            const current = customCSSTextarea.value.trim();
+            const options = Array.from(styleDropdown.querySelectorAll("option"))
+                .map(o => o.value)
+                .filter(v => v && v.startsWith('/assets/premade_styles/'));
+
+            Promise.all(
+                options.map(url => styleCache[url] ? Promise.resolve(styleCache[url]) : fetchAndCacheTheme(url))
+            ).then(() => {
+                for (const url of options) {
+                    if ((styleCache[url] || '').trim() === current) {
+                        styleDropdown.value = url;
+                        if (typeof updateHighlighting === 'function') updateHighlighting();
+                        break;
+                    }
+                }
+            });
+        }
 
         // Function to fetch and cache theme data
         function fetchAndCacheTheme(url) {
@@ -164,8 +189,11 @@
                 if (data) {
                     customCSSTextarea.value = data;
                     styleDropdown.value = themeUrl;
+                    if (typeof updateHighlighting === 'function') updateHighlighting();
                 }
             });
+        } else {
+            detectFromCSS();
         }
 
         styleDropdown.addEventListener("change", function () {
@@ -173,61 +201,23 @@
 
             if (styleCache[url]) {
                 customCSSTextarea.value = styleCache[url];
+                if (typeof updateHighlighting === 'function') updateHighlighting();
             } else {
                 fetchAndCacheTheme(url).then(data => {
                     if (data) {
                         customCSSTextarea.value = data;
+                        if (typeof updateHighlighting === 'function') updateHighlighting();
                     }
                 });
             }
         });
 
-        const form = document.querySelector("form#guestbook-edit-form");
-        form.addEventListener("submit", function (event) {
-            const cssContent = customCSSTextarea.value.trim();
-            const builtInPrefix = "/* [::Built in::] ";
 
-            let isBuiltInTheme = false;
-            for (const url in styleCache) {
-                if (styleCache[url].trim() === cssContent) {
-                    isBuiltInTheme = true;
-                    break;
-                }
-            }
-
-            if (!isBuiltInTheme && cssContent.startsWith(builtInPrefix)) {
-                const updatedCSS = cssContent.replace("/* [::Built in::] ", "/* ").trim();
-                customCSSTextarea.value = updatedCSS;
-            }
-        });
-
-        // CSS Editor functionality
-        const cssHighlighted = document.getElementById('css-highlighted');
+        // CSS Editor
         const cssTextarea = document.getElementById('customPageCSS');
-        
-        function updateHighlighting() {
-            const code = cssTextarea.value || cssTextarea.placeholder;
-            cssHighlighted.textContent = code;
-            if (typeof Prism !== 'undefined') {
-                Prism.highlightElement(cssHighlighted);
-            }
-        }
 
-        // Initialize highlighting
-        updateHighlighting();
 
-        // Update highlighting on input
-        cssTextarea.addEventListener('input', updateHighlighting);
-        cssTextarea.addEventListener('change', updateHighlighting);
 
-        // Sync scroll positions
-        cssTextarea.addEventListener('scroll', function() {
-            const pre = this.previousElementSibling;
-            if (pre) {
-                pre.scrollTop = this.scrollTop;
-                pre.scrollLeft = this.scrollLeft;
-            }
-        });
     });
 
     // Format CSS function
@@ -244,9 +234,6 @@
         
         textarea.value = css;
         
-        // Update highlighting
-        const event = new Event('input');
-        textarea.dispatchEvent(event);
     }
 </script>
 
@@ -281,28 +268,17 @@
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 14px;
     line-height: 1.5;
+    min-height: 300px;
 }
 
-.css-editor-wrapper pre {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    margin: 0;
-    padding: 1rem;
-    pointer-events: none;
-    overflow: auto;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
 
 .css-editor-wrapper textarea {
     position: relative;
     width: 100%;
+    min-height: 300px;
     padding: 1rem;
     background: transparent;
-    color: transparent;
+    color: #e5e7eb;
     caret-color: white;
     border: none;
     outline: none;
@@ -310,10 +286,15 @@
     font-family: inherit;
     font-size: inherit;
     line-height: inherit;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    min-height: 300px;
+    white-space: pre; /* disable wrapping to keep caret position accurate */
+    overflow: auto;
+    tab-size: 2;
+    -moz-tab-size: 2;
+    font-variant-ligatures: none; /* stable glyph widths */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
+
 
 .css-editor-wrapper textarea::selection {
     background: rgba(33, 150, 243, 0.3);
