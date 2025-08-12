@@ -3,35 +3,65 @@
 {{define "title"}}User Settings{{end}}
 
 {{ define "content" }}
-<h1>User Settings</h1>
-<form method="post" action="/admin/settings">
-    <p>You can add your email here if you want to receive notifications whenever someone posts something on one of your guestbooks. This will also be used to as a recovery email in case you forget your password.</p>
-    <label for="email">Email:</label>
-    <input type="email" id="email" name="email" value="{{ .Data.Email }}" required>
-    <br>
-    <label for="notify">Receive Email Notifications:</label>
-    <input type="checkbox" id="notify" name="notify" {{ if .Data.EmailNotifications }}checked{{ end }}>
-    <br>
-    <br>
-    <input type="submit" value="Update Settings">
-</form>
+<div class="fade-in">
+    <h1>User Settings</h1>
+    
+    <div class="form-section">
+        <h4>Email & Notifications</h4>
+        <p class="text-small text-muted">
+            Configure your email to receive notifications when visitors leave messages on your guestbooks. 
+            This email will also be used for password recovery.
+        </p>
+        
+        <form method="post" action="/admin/settings">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" 
+                    placeholder="your@email.com"
+                    value="{{ .Data.Email }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="notify" name="notify" 
+                        {{ if .Data.EmailNotifications }}checked{{ end }}>
+                    <span>Receive email notifications for new guestbook messages</span>
+                </label>
+                <div class="form-hint">
+                    Get notified instantly when someone leaves a message on your guestbooks
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Update Settings</button>
+        </form>
+    </div>
 
-<br>
-<hr>
-
-<h2>Change Password</h2>
-<form method="post" action="/admin/change-password">
-    <label for="current-password">Current Password:</label>
-    <input type="password" id="current-password" name="current-password" required>
-    <br>
-    <label for="new-password">New Password:</label>
-    <input type="password" id="new-password" name="new-password" required>
-    <br>
-    <label for="confirm-password">Confirm New Password:</label>
-    <input type="password" id="confirm-password" name="confirm-password" required>
-    <br>
-    <br>
-    <input type="submit" value="Change Password">
-</form>
+    <div class="form-section">
+        <h4>Security</h4>
+        <p class="text-small text-muted">
+            Keep your account secure by using a strong, unique password.
+        </p>
+        
+        <form method="post" action="/admin/change-password">
+            <div class="form-group">
+                <label for="current-password">Current Password</label>
+                <input type="password" id="current-password" name="current-password" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="new-password">New Password</label>
+                <input type="password" id="new-password" name="new-password" required>
+                <div class="form-hint">Use at least 8 characters with a mix of letters, numbers, and symbols</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="confirm-password">Confirm New Password</label>
+                <input type="password" id="confirm-password" name="confirm-password" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Change Password</button>
+        </form>
+    </div>
+</div>
 
 {{ end }}

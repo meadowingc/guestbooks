@@ -227,7 +227,27 @@ func AdminGuestbookList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderAdminTemplate(w, r, "guestbook_list", guestbooks)
+	type GuestbookListItem struct {
+		Guestbook       Guestbook
+		TotalMessages   int64
+		PendingMessages int64
+	}
+
+	items := make([]GuestbookListItem, 0, len(guestbooks))
+	for _, g := range guestbooks {
+		var total int64
+		var pending int64
+		db.Model(&Message{}).Where("guestbook_id = ?", g.ID).Count(&total)
+		db.Model(&Message{}).Where("guestbook_id = ? AND approved = ?", g.ID, false).Count(&pending)
+
+		items = append(items, GuestbookListItem{
+			Guestbook:       g,
+			TotalMessages:   total,
+			PendingMessages: pending,
+		})
+	}
+
+	renderAdminTemplate(w, r, "guestbook_list", items)
 }
 
 func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
@@ -643,20 +663,25 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	email := r.FormValue("email")
-	if email == "" {
-		http.Error(w, "Email is required", http.StatusBadRequest)
-		return
+	identifier := strings.TrimSpace(r.FormValue("username"))
+	if identifier == "" {
+		identifier = strings.TrimSpace(r.FormValue("email"))
 	}
 
+	// Always show success to avoid user enumeration
 	var user AdminUser
-	result := db.Where(&AdminUser{
-		Email:         email,
-		EmailVerified: true,
-	}).First(&user)
-	if result.Error != nil {
-		// Don't reveal whether the email exists for security reasons
-		// Just show success message anyway
+	var result *gorm.DB
+
+	if identifier != "" {
+		// Try lookup by username first
+		result = db.Where(&AdminUser{Username: identifier}).First(&user)
+		if result.Error != nil {
+			// Fallback to email lookup (only if verified)
+			result = db.Where(&AdminUser{Email: identifier, EmailVerified: true}).First(&user)
+		}
+	}
+
+	if result == nil || result.Error != nil || user.Email == "" || !user.EmailVerified {
 		renderAdminTemplate(w, r, "password_reset_sent", nil)
 		return
 	}

@@ -9,113 +9,125 @@
 {{define "content"}}
 {{$isEditing := (and .Data (or .Data.ID false))}}
 
-<h1>{{if $isEditing}}Edit{{else}}New{{end}} Guestbook</h1>
-<div>
-    {{ $formActionUrl := "/admin/guestbook/new" }} <!-- Default URL -->
+<div class="fade-in">
+    <h1>{{if $isEditing}}Edit{{else}}Create New{{end}} Guestbook</h1>
+    
+    {{ $formActionUrl := "/admin/guestbook/new" }}
     {{ if $isEditing }}
-    {{ $formActionUrl = printf "/admin/guestbook/%d/edit" .Data.ID }} <!-- Overwrite URL if $isEditing is truthy -->
+    {{ $formActionUrl = printf "/admin/guestbook/%d/edit" .Data.ID }}
     {{ end }}
 
     <form id="guestbook-edit-form" action="{{ $formActionUrl }}" method="post">
-        <h4>Basic info</h4>
-        <div>
-            <label for="websiteURL">Website URL:</label>
-            <input type="text" id="websiteURL" name="websiteURL" {{if $isEditing}}value="{{.Data.WebsiteURL}}" {{end}}
-                required>
-        </div>
-        <br>
-        <div>
-            <label for="requiresApproval">Messages require approval before being publicly displayed:</label>
-            <input type="checkbox" id="requiresApproval" name="requiresApproval" {{if and $isEditing
-                .Data.RequiresApproval}}checked{{end}}>
-            <div>
-                <small>
-                    Tip: if you require message approval then it is recommended you also
-                    enable email notifications in your <a href="/admin/settings">user settings</a>.
-                </small>
+        <div class="form-section">
+            <h4>Basic Information</h4>
+            
+            <div class="form-group">
+                <label for="websiteURL">Website URL</label>
+                <input type="url" id="websiteURL" name="websiteURL" 
+                    placeholder="https://yourwebsite.com"
+                    {{if $isEditing}}value="{{.Data.WebsiteURL}}"{{end}} required>
+                <div class="form-hint">
+                    Your site's URL where the guestbook will be displayed.
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="requiresApproval" name="requiresApproval" 
+                        {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>
+                    <span>Require approval before messages are publicly displayed</span>
+                </label>
+                <div class="form-hint">
+                    💡 Tip: If you enable message approval, we recommend enabling email notifications in your 
+                    <a href="/admin/settings">user settings</a> to get notified of new messages.
+                </div>
             </div>
         </div>
-        <br>
-        <h4>Anti Bot verification</h4>
-        <div>
-            <small>
-                The following options will allow you to set a question that
-                whoever is submitting your guestbook will have to answer, and if
-                they fail to do so then they won't be able to submit the
-                message. This is a rudimentary measure against automated bots.
-                For example, the question can be <i>What is my name?</i> or
-                <i>Does water boil at 100 C?</i>
-            </small>
+
+        <div class="form-section">
+            <h4>Anti-Bot Verification</h4>
+            <p class="text-small text-muted">
+                Set up a challenge question to prevent automated spam. Visitors will need to answer this question 
+                correctly to submit a message. For example: "What is my name?" or "Does water boil at 100°C?"
+            </p>
+            
+            <div class="form-group">
+                <label for="challengeQuestion">Verification Question (optional)</label>
+                <input type="text" id="challengeQuestion" name="challengeQuestion" 
+                    placeholder="What color is the sky?"
+                    {{if $isEditing}}value="{{.Data.ChallengeQuestion}}"{{end}}>
+                <div class="form-hint">Leave empty to disable verification</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="challengeHint">Hint for Users (optional)</label>
+                <input type="text" id="challengeHint" name="challengeHint" 
+                    placeholder="Think about a clear day..."
+                    {{if $isEditing}}value="{{.Data.ChallengeHint}}"{{end}}>
+            </div>
+            
+            <div class="form-group">
+                <label for="challengeAnswer">Expected Answer</label>
+                <input type="text" id="challengeAnswer" name="challengeAnswer" 
+                    placeholder="blue"
+                    {{if $isEditing}}value="{{.Data.ChallengeAnswer}}"{{end}}>
+                <div class="form-hint">Case-insensitive</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="challengeFailedMessage">Error Message for Wrong Answer</label>
+                <input type="text" id="challengeFailedMessage" name="challengeFailedMessage"
+                    placeholder="Please provide the correct answer to the verification question."
+                    {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}"
+                    {{else}}value="The provided answer to the challenge question is invalid!"{{end}}>
+            </div>
         </div>
-        <br>
-        <div>
-            <label for="challengeQuestion">Verification Question (leave empty if you don't want to use it):</label>
-            <input type="text" id="challengeQuestion" name="challengeQuestion" placeholder="Is water wet?" {{if
-                $isEditing}}value="{{.Data.ChallengeQuestion}}" {{end}}>
+
+        <div class="form-section">
+            <h4>Custom Styling</h4>
+            <div class="callout callout-info">
+                <p class="text-small">
+                    <strong>💡 Pro tips:</strong> You can include custom fonts using <code>@font-face</code>. Feel free to edit the CSS of one of the build in themes in order to build your own!
+                </p>
+            </div>
+            
+            <div class="form-group">
+                <label for="premadeStyles">Choose a Premade Theme</label>
+                <select id="premadeStyles" class="style-dropdown">
+                    <option value="" disabled selected>Select a theme...</option>
+                    <option value="/assets/premade_styles/gray-bear.css">🐻 Gray Bear</option>
+                    <option value="/assets/premade_styles/webcomic.css">🎨 Webcomic</option>
+                    <option value="/assets/premade_styles/cherry-mint.css">🍒 Cherry Mint</option>
+                    <option value="/assets/premade_styles/cabernete.css">🍷 Cabernet</option>
+                    <option value="/assets/premade_styles/peaceful-sky.css">☁️ Peaceful Sky</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="customPageCSS">Custom CSS</label>
+                <div class="css-editor-container">
+                    <div class="code-section">
+                        <div class="code-header">
+                            <span class="code-label">CSS</span>
+                            <button type="button" class="btn btn-sm" onclick="formatCSS()">Format</button>
+                        </div>
+                        <div class="css-editor-wrapper">
+                            <pre class="line-numbers" style="margin: 0;"><code id="css-highlighted" class="language-css"></code></pre>
+                            <textarea id="customPageCSS" name="customPageCSS" 
+                                placeholder="/* Enter your custom CSS here */&#10;body {&#10;  font-family: 'Georgia', serif;&#10;  background: #f5f5f5;&#10;}" 
+                                rows="12" spellcheck="false">{{if $isEditing}}{{.Data.CustomPageCSS}}{{end}}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <br>
-        <div>
-            <label for="challengeHint">Hint that will be shown to users (optional):</label>
-            <input type="text" id="challengeHint" name="challengeHint" placeholder="yes/no" {{if
-                $isEditing}}value="{{.Data.ChallengeHint}}" {{end}}>
+        
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">
+                {{if $isEditing}}Update{{else}}Create{{end}} Guestbook
+            </button>
+            <a href="/admin/" class="btn btn-outline btn-lg">Cancel</a>
         </div>
-        <br>
-        <div>
-            <label for="challengeFailedMessage">Message to show the user in case they fail to answer the
-                challenge:</label>
-            <input type="text" id="challengeFailedMessage" name="challengeFailedMessage"
-                placeholder="Please answer yes or no." {{if $isEditing}}value="{{.Data.ChallengeFailedMessage}}"
-                {{else}}value="The provided answer to the challenge question is invalid!" {{end}}>
-        </div>
-        <br>
-        <div>
-            <label for="challengeAnswer">Expected answer to the verification question (case insensitive):</label>
-            <input type="text" id="challengeAnswer" name="challengeAnswer" placeholder="yes" {{if
-                $isEditing}}value="{{.Data.ChallengeAnswer}}" {{end}}>
-        </div>
-        <br>
-        <h4>Custom CSS</h4>
-        <div>
-            <small>
-                <b>Note:</b> If you want to go back to the default theme then delete the contents of the box below and save.
-            </small>
-        </div>
-        <div>
-            <small>
-                You can include custom fonts using <code>@font-face</code>.
-                <pre style="white-space: pre-wrap; background: #f6f8fa; padding: .5em; border-radius: 6px;">
-@font-face {
-    font-family: 'MyFont';
-    src: url('https://example.com/fonts/MyFont.woff2') format('woff2');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
-body { font-family: 'MyFont', system-ui, sans-serif; }</pre>
-            </small>
-        </div>
-        <div>
-            <label for="premadeStyles">Premade styles:</label>
-            <select id="premadeStyles" class="style-dropdown">
-                <option value="" disabled selected>Select a style</option>
-                <option value="/assets/premade_styles/gray-bear.css">gray-bear</option>
-                <option value="/assets/premade_styles/webcomic.css">webcomic</option>
-                <option value="/assets/premade_styles/cherry-mint.css">cherry-mint</option>
-                <option value="/assets/premade_styles/cabernete.css">cabernete</option>
-                <option value="/assets/premade_styles/peaceful-sky.css">peaceful-sky</option>
-            </select>
-        </div>
-        <br>
-        <div>
-            <label for="customPageCSS">Custom CSS (optional):</label>
-            <textarea id="customPageCSS" name="customPageCSS" placeholder="body { display: awesome; }" rows="10"
-                style="width: 100%; box-sizing: border-box;">{{if $isEditing}}{{.Data.CustomPageCSS}}{{end}}</textarea>
-        </div>
-        <br>
-        <div>
-            <input type="submit" value="{{if $isEditing}}Update{{else}}Create{{end}} Guestbook">
-        </div>
-        <br>
     </form>
 </div>
 
@@ -188,6 +200,127 @@ body { font-family: 'MyFont', system-ui, sans-serif; }</pre>
                 customCSSTextarea.value = updatedCSS;
             }
         });
+
+        // CSS Editor functionality
+        const cssHighlighted = document.getElementById('css-highlighted');
+        const cssTextarea = document.getElementById('customPageCSS');
+        
+        function updateHighlighting() {
+            const code = cssTextarea.value || cssTextarea.placeholder;
+            cssHighlighted.textContent = code;
+            if (typeof Prism !== 'undefined') {
+                Prism.highlightElement(cssHighlighted);
+            }
+        }
+
+        // Initialize highlighting
+        updateHighlighting();
+
+        // Update highlighting on input
+        cssTextarea.addEventListener('input', updateHighlighting);
+        cssTextarea.addEventListener('change', updateHighlighting);
+
+        // Sync scroll positions
+        cssTextarea.addEventListener('scroll', function() {
+            const pre = this.previousElementSibling;
+            if (pre) {
+                pre.scrollTop = this.scrollTop;
+                pre.scrollLeft = this.scrollLeft;
+            }
+        });
     });
+
+    // Format CSS function
+    function formatCSS() {
+        const textarea = document.getElementById('customPageCSS');
+        let css = textarea.value;
+        
+        // Basic CSS formatting
+        css = css.replace(/\s*{\s*/g, ' {\n  ');
+        css = css.replace(/;\s*/g, ';\n  ');
+        css = css.replace(/\s*}\s*/g, '\n}\n\n');
+        css = css.replace(/\n\s*\n\s*\n/g, '\n\n');
+        css = css.trim();
+        
+        textarea.value = css;
+        
+        // Update highlighting
+        const event = new Event('input');
+        textarea.dispatchEvent(event);
+    }
 </script>
+
+<style>
+.css-editor-container .code-section {
+    background: var(--gray-900);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    margin: 0;
+}
+
+.css-editor-container .code-header {
+    background: var(--gray-800);
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--gray-700);
+}
+
+.css-editor-container .code-label {
+    color: var(--gray-400);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.css-editor-wrapper {
+    position: relative;
+    background: var(--gray-900);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.css-editor-wrapper pre {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 1rem;
+    pointer-events: none;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.css-editor-wrapper textarea {
+    position: relative;
+    width: 100%;
+    padding: 1rem;
+    background: transparent;
+    color: transparent;
+    caret-color: white;
+    border: none;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-height: 300px;
+}
+
+.css-editor-wrapper textarea::selection {
+    background: rgba(33, 150, 243, 0.3);
+}
+
+.css-editor-wrapper textarea::-moz-selection {
+    background: rgba(33, 150, 243, 0.3);
+}
+</style>
 {{end}}

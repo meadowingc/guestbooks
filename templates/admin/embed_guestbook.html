@@ -1,96 +1,454 @@
 {{template "layout.html" .}}
 
-{{define "title"}}Embedding Instructions{{end}}
+{{define "title"}}Embed Code{{end}}
 
 {{define "content"}}
-<p>
-    There are two ways to embed a Guestbook into your site. The easiest way is
-    using an <code>iframe</code>, but it doesn't allow you to personalize the
-    style in any way. If you want more control then you can use JavaScript to
-    create the guestbook form and populate the messages for you, but it's up to
-    you to style the form.
-</p>
+<div class="fade-in">
+    <div class="mb-3">
+        <a href="/admin/" class="btn btn-outline btn-sm">← Back to Guestbooks</a>
+    </div>
 
-<ul>
-    <li><a href="#embed-with-an-iframe">Embed with an iframe</a></li>
-    <li><a href="#embed-with-javascript">Embed with JavaScript</a></li>
-    <li><a href="#extra-parameters">Extra parameters</a></li>
-</ul>
+    <div class="card mb-3">
+        <div class="card-header">
+            <h2 style="margin: 0;">📋 Embed Your Guestbook</h2>
+            <p class="text-small text-muted" style="margin: 0.25rem 0 0 0;">
+                Choose how you want to add the guestbook to your website
+            </p>
+        </div>
+    </div>
 
+    <!-- Tabs Navigation -->
+    <div class="embed-tabs">
+        <button class="embed-tab active" onclick="showTab('iframe-tab', this)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h11A1.5 1.5 0 0 1 15 3.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 11.5v-8zM2.5 3a.5.5 0 0 0-.5.5v8a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-8a.5.5 0 0 0-.5-.5h-11z"/>
+            </svg>
+            Simple iframe
+        </button>
+        <button class="embed-tab" onclick="showTab('javascript-tab', this)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M5.854 4.854a.5.5 0 1 0-.708-.708l-3.5 3.5a.5.5 0 0 0 0 .708l3.5 3.5a.5.5 0 0 0 .708-.708L2.707 8l3.147-3.146zm4.292 0a.5.5 0 0 1 .708-.708l3.5 3.5a.5.5 0 0 1 0 .708l-3.5 3.5a.5.5 0 0 1-.708-.708L13.293 8l-3.147-3.146z"/>
+            </svg>
+            Custom JavaScript
+        </button>
+        <button class="embed-tab" onclick="showTab('advanced-tab', this)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/>
+            </svg>
+            Advanced Options
+        </button>
+    </div>
 
-<div class="embed-instructions">
-    <h2 id="embed-with-an-iframe">Embed with an iframe</h2>
-    <p>Copy and paste the following code into your website's HTML to embed this guestbook form:</p>
-    <pre>
-<code class="language-html" data-lang="html">
-&lt;iframe src="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}" width="300" height="500" frameborder="0">&lt;/iframe>
-</code>
-</pre>
-</div>
+    <!-- Tab Content -->
+    <div id="iframe-tab" class="embed-tab-content active">
+        <div class="card">
+            <div class="card-body">
+                <h3>🖼️ Simple iframe Embed</h3>
+                <p class="text-muted">
+                    The easiest way to add your guestbook. Just copy and paste this code into your website's HTML.
+                    The guestbook will appear exactly as styled, but customization options are limited.
+                </p>
+                
+                <div class="callout callout-info mb-3">
+                    <p class="text-small" style="margin: 0;">
+                        <strong>Best for:</strong> Quick setup, no coding experience needed, consistent appearance
+                    </p>
+                </div>
 
-<div class="embed-instructions">
-    <h2 id="embed-with-javascript">Embed with JavaScript</h2>
-    <p>
-        Copy and paste the following code into your website's HTML where you to embed this guestbook form. Feel free to
-        edit the HTML as you see fit but don't change the <code>name</code> attribute of the <code>input</code> tags,
-        nor the tag <code>id</code>s! Feel free to <a target="_blank" href="https://meadow.cafe/mailbox/">reach
-            out</a> if you need help or have any questions.
-    </p>
-    <pre>
-<code class="language-html" data-lang="html">
-&lt;script async src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js">&lt;/script> 
-&lt;div id="guestbooks___guestbook-form-container">
-    &lt;form id="guestbooks___guestbook-form" action="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit" method="post">
-        &lt;div class="guestbooks___input-container">
-            &lt;input placeholder="Name" type="text" id="name" name="name" required>
-        &lt;/div>
-        &lt;div class="guestbooks___input-container">
-            &lt;input placeholder="Website (optional)" type="url" id="website" name="website">
-        &lt;/div>
-        &lt;div id="guestbooks___challenge-answer-container">&lt;/div>  
-        &lt;br/>
-        &lt;div class="guestbooks___input-container">
-            &lt;textarea placeholder="Message (plain text only)..." id="text" name="text" style="width: 100%; box-sizing: border-box; resize: vertical;" required>&lt;/textarea>
-        &lt;/div>
-        &lt;br/>
-        &lt;input type="submit" value="Submit">
-        &lt;div id="guestbooks___error-message">&lt;/div>  
-    &lt;/form>
-&lt;/div>
-&lt;div id="guestbooks___guestbook-made-with" style="text-align: right;">
-    &lt;small>Lovingly made with &lt;a target="_blank" href="{{.Data.PublicHostUrl}}">Guestbooks&lt;/a>&lt;/small>
-&lt;/div>  
-&lt;hr style="margin: 1em 0;"/>
-&lt;h3 id="guestbooks___guestbook-messages-header">Messages&lt;/h3>
-&lt;div id="guestbooks___guestbook-messages-container">&lt;/div>  
-</code>
-</pre>
-</div>
+                <div class="code-section">
+                    <div class="code-header">
+                        <span class="code-label">HTML</span>
+                        <button class="btn btn-sm copy-code-btn" onclick="copyCode('iframe-code')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                            </svg>
+                            Copy
+                        </button>
+                    </div>
+                    <pre class="line-numbers"><code id="iframe-code" class="language-html">&lt;iframe 
+  src="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}" 
+  width="100%" 
+  height="600" 
+  frameborder="0"
+  style="border: 1px solid #e0e0e0; border-radius: 8px;"&gt;
+&lt;/iframe&gt;</code></pre>
+                </div>
 
-<div class="embed-instructions">
-    <h2 id="extra-parameters">Extra parameters</h2>
-    <p>
-        This section is for advanced users who want to customize how the guestbook behaves. Normal users
-        don't need to worry about any of this, unless they know what they're doing.
-    </p>
-    <p>
-        Guestbooks supports adding some hidden <code>input</code> tags to the form to customize the guestbook's
-        behavior. The following parameters are supported:
-    </p>
+                <div class="mt-3">
+                    <h4>Customization Options</h4>
+                    <ul class="text-small">
+                        <li>Adjust <code>width</code> and <code>height</code> to fit your layout</li>
+                        <li>Add CSS to the <code>style</code> attribute for borders or shadows</li>
+                        <li>Set <code>width="100%"</code> for responsive sizing</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="javascript-tab" class="embed-tab-content">
+        <div class="card">
+            <div class="card-body">
+                <h3>⚡ Custom JavaScript Embed</h3>
+                <p class="text-muted">
+                    Full control over the appearance. The JavaScript creates the form and loads messages, 
+                    but you style it to match your website perfectly.
+                </p>
+                
+                <div class="callout callout-info mb-3">
+                    <p class="text-small" style="margin: 0;">
+                        <strong>Best for:</strong> Complete design control, matching your site's theme, advanced customization
+                    </p>
+                </div>
+
+                <div class="code-section">
+                    <div class="code-header">
+                        <span class="code-label">HTML + JavaScript</span>
+                        <button class="btn btn-sm copy-code-btn" onclick="copyCode('js-code')">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                                <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                            </svg>
+                            Copy
+                        </button>
+                    </div>
+                    <pre class="line-numbers"><code id="js-code" class="language-html">&lt;!-- Guestbook Script --&gt;
+&lt;script async src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js"&gt;&lt;/script&gt;
+
+&lt;!-- Guestbook Form --&gt;
+&lt;div id="guestbooks___guestbook-form-container"&gt;
+  &lt;form id="guestbooks___guestbook-form" 
+        action="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit" 
+        method="post"&gt;
     
-    <ul>
-        <li><code>redirect_to_url</code>: Use this parameter to specify a URL to which the user will be redirected after submitting a message. Example:
-            <pre><code class="language-html" data-lang="html">&lt;input type="hidden" 
+    &lt;div class="guestbooks___input-container"&gt;
+      &lt;input type="text" 
+             id="name" 
+             name="name" 
+             placeholder="Your Name" 
+             required&gt;
+    &lt;/div&gt;
+    
+    &lt;div class="guestbooks___input-container"&gt;
+      &lt;input type="url" 
+             id="website" 
+             name="website" 
+             placeholder="Website (optional)"&gt;
+    &lt;/div&gt;
+    
+    &lt;div id="guestbooks___challenge-answer-container"&gt;&lt;/div&gt;
+    
+    &lt;div class="guestbooks___input-container"&gt;
+      &lt;textarea id="text" 
+                name="text" 
+                placeholder="Leave your message here..." 
+                rows="4"
+                style="width: 100%; box-sizing: border-box; resize: vertical;"
+                required&gt;&lt;/textarea&gt;
+    &lt;/div&gt;
+    
+    &lt;button type="submit"&gt;Sign Guestbook&lt;/button&gt;
+    &lt;div id="guestbooks___error-message"&gt;&lt;/div&gt;
+  &lt;/form&gt;
+&lt;/div&gt;
+
+&lt;!-- Attribution (optional but appreciated!) --&gt;
+&lt;div id="guestbooks___guestbook-made-with" style="text-align: right; margin-top: 10px;"&gt;
+  &lt;small&gt;Powered by &lt;a href="{{.Data.PublicHostUrl}}" target="_blank"&gt;Guestbooks&lt;/a&gt;&lt;/small&gt;
+&lt;/div&gt;
+
+&lt;!-- Messages Section --&gt;
+&lt;hr style="margin: 2em 0;"/&gt;
+&lt;h3 id="guestbooks___guestbook-messages-header"&gt;Messages&lt;/h3&gt;
+&lt;div id="guestbooks___guestbook-messages-container"&gt;&lt;/div&gt;</code></pre>
+                </div>
+
+                <div class="callout callout-warning mt-3">
+                    <p class="text-small" style="margin: 0;">
+                        <strong>⚠️ Important:</strong> Don't change the <code>name</code> attributes or element <code>id</code>s - they're required for the form to work properly!
+                    </p>
+                </div>
+
+                <div class="mt-3">
+                    <h4>Styling Tips</h4>
+                    <ul class="text-small">
+                        <li>Add your own CSS classes to style the form elements</li>
+                        <li>Customize the button text and placeholder messages</li>
+                        <li>Rearrange the form layout to match your design</li>
+                        <li>Style the messages container to fit your theme</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="advanced-tab" class="embed-tab-content">
+        <div class="card">
+            <div class="card-body">
+                <h3>⚙️ Advanced Configuration</h3>
+                <p class="text-muted">
+                    Additional parameters for advanced users who want to customize the guestbook's behavior.
+                </p>
+
+                <h4>Hidden Form Parameters</h4>
+                <p class="text-small text-muted">
+                    Add these hidden inputs to your form for extra functionality:
+                </p>
+
+                <div class="advanced-param">
+                    <h5>🔄 Custom Redirect URL</h5>
+                    <p class="text-small">
+                        Redirect users to a specific page after they submit a message (useful for thank you pages).
+                    </p>
+                    <div class="code-section">
+                        <div class="code-header">
+                            <span class="code-label">HTML</span>
+                            <button class="btn btn-sm copy-code-btn" onclick="copyCode('redirect-code')">
+                                Copy
+                            </button>
+                        </div>
+                        <pre><code id="redirect-code" class="language-html">&lt;input type="hidden" 
        id="redirect_to_url" 
        name="redirect_to_url" 
-       value="https://meadow.cafe/thank-you-for-signing-my-guestbook">
-</code></pre>
-            <p>
-                By default, the embed instructions use AJAX to post the message, so it doesn't matter where the user is redirected. However, if you don't use AJAX (e.g., you don't want to use JavaScript), then you need to worry about where the user is redirected after submitting the form.
-            </p>
-        </li>
-    </ul>
+       value="https://yoursite.com/thank-you"&gt;</code></pre>
+                    </div>
+                </div>
 
+                <div class="callout callout-info mt-3">
+                    <p class="text-small" style="margin: 0;">
+                        <strong>💡 Note:</strong> The JavaScript embed uses AJAX by default, so redirects only apply when JavaScript is disabled or for non-AJAX submissions.
+                    </p>
+                </div>
 
+                <h4 class="mt-4">API Endpoints</h4>
+                <p class="text-small text-muted">For developers building custom integrations:</p>
+                
+                <div class="endpoint-list">
+                    <div class="endpoint-item">
+                        <code class="endpoint-method">POST</code>
+                        <code class="endpoint-url">{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit</code>
+                        <span class="text-small text-muted">Submit a new message</span>
+                    </div>
+                    <div class="endpoint-item">
+                        <code class="endpoint-method">GET</code>
+                        <code class="endpoint-url">{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}</code>
+                        <span class="text-small text-muted">View guestbook page</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+
+<style>
+.embed-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--gray-200);
+}
+
+.embed-tab {
+    background: none;
+    border: none;
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    color: var(--gray-600);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s ease;
+}
+
+.embed-tab:hover {
+    color: var(--primary-color);
+    background: var(--gray-50);
+}
+
+.embed-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    background: none;
+}
+
+.embed-tab svg {
+    opacity: 0.7;
+}
+
+.embed-tab.active svg {
+    opacity: 1;
+}
+
+.embed-tab-content {
+    display: none;
+}
+
+.embed-tab-content.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+.code-section {
+    background: var(--gray-900);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    margin: 1rem 0;
+}
+
+.code-header {
+    background: var(--gray-800);
+    padding: 0.5rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--gray-700);
+}
+
+.code-label {
+    color: var(--gray-400);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.copy-code-btn {
+    background: var(--gray-700);
+    color: white;
+    border: none;
+    padding: 0.25rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: background 0.2s ease;
+}
+
+.copy-code-btn:hover {
+    background: var(--gray-600);
+}
+
+.copy-code-btn.copied {
+    background: var(--success-color);
+}
+
+.code-section pre {
+    margin: 0;
+    padding: 1rem;
+    overflow-x: auto;
+    background: var(--gray-900);
+}
+
+.code-section code {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.advanced-param {
+    background: var(--gray-50);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    margin: 1rem 0;
+}
+
+.advanced-param h5 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    color: var(--gray-800);
+}
+
+.endpoint-list {
+    background: var(--gray-50);
+    padding: 1rem;
+    border-radius: var(--border-radius);
+}
+
+.endpoint-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.endpoint-item:last-child {
+    border-bottom: none;
+}
+
+.endpoint-method {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 50px;
+    text-align: center;
+}
+
+.endpoint-url {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--gray-700);
+    word-break: break-all;
+}
+</style>
+
+<script>
+function showTab(tabId, button) {
+    // Hide all tab contents
+    document.querySelectorAll('.embed-tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.embed-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Show selected tab content
+    document.getElementById(tabId).classList.add('active');
+    
+    // Mark button as active
+    button.classList.add('active');
+}
+
+function copyCode(codeId) {
+    const codeElement = document.getElementById(codeId);
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    
+    // Get the text content
+    const text = codeElement.textContent;
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(text).then(() => {
+        button.classList.add('copied');
+        button.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z"/>
+            </svg>
+            Copied!
+        `;
+        
+        setTimeout(() => {
+            button.classList.remove('copied');
+            button.innerHTML = originalHTML;
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+
+// Initialize Prism.js after DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof Prism !== 'undefined') {
+        Prism.highlightAll();
+    }
+});
+</script>
 {{end}}

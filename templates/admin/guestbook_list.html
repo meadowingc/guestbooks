@@ -3,39 +3,85 @@
 {{define "title"}}Guestbook List{{end}}
 
 {{define "content"}}
-<h1>Guestbook List</h1>
-<a href="/admin/guestbook/new">Create New Guestbook</a>
-<table>
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Website URL</th>
-            <th>Share</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
+<div class="fade-in">
+    <div class="flex-between mb-3 create-gb-sec-top">
+        <h1>My Guestbooks</h1>
+        <a href="/admin/guestbook/new" class="btn btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+            </svg>
+            Create New Guestbook
+        </a>
+    </div>
+
+    {{if gt (len .Data) 0}}
+    <div class="guestbook-list">
         {{range .Data}}
-        <tr>
-            <td>{{.ID}}</td>
-            <td>{{.WebsiteURL}}</td>
-            <td>
-                <a href="/guestbook/{{.ID}}">Public Link</a> |
-                <a href="/admin/guestbook/{{.ID}}/embed">Embed</a>
-            </td>
-            <td>
-                <a href="/admin/guestbook/{{.ID}}">Manage</a> |
-                <a href="/admin/guestbook/{{.ID}}/edit">Edit</a> |
-                <form action="/admin/guestbook/{{.ID}}/delete" method="post" style="display: inline;">
-                    <input class="link" type="submit" value="Delete" onclick="return confirm('Are you sure?');">
+        <div class="guestbook-card guestbook-card-row {{if gt .PendingMessages 0}}has-pending{{end}}" role="region" aria-labelledby="gb-{{.Guestbook.ID}}">
+            <div class="gb-main">
+                <div class="gb-header">
+                    <div class="gb-title">
+                        <a id="gb-{{.Guestbook.ID}}" class="gb-url" href="/guestbook/{{.Guestbook.ID}}" target="_blank" rel="noopener">
+                            {{.Guestbook.WebsiteURL}}
+                        </a>
+                    </div>
+                    <div class="gb-meta">
+                        {{if .Guestbook.RequiresApproval}}
+                            <span class="badge badge-warning" title="Messages are not auto-approved">Messages are not auto-approved</span>
+                        {{else}}
+                            <span class="badge badge-success" title="Messages are auto-approved">Messages are auto-approved</span>
+                        {{end}}
+                    </div>
+                </div>
+
+                <div class="gb-stats stats" aria-label="Guestbook statistics">
+                    <div class="stat">
+                        <div class="stat-label">
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 16 16">
+                                <path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414.05 3.555Z"/>
+                                <path d="M0 4.697v7.104l5.803-3.558L0 4.697Zm6.761 4.133-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586l-1.239-.757Z"/>
+                            </svg>
+                            Total messages
+                        </div>
+                        <div class="stat-value" title="All messages, approved or pending">{{.TotalMessages}}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">
+                            <svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 16 16">
+                                <path d="M3 3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5.5v-1H3V4h10v3h1V4a1 1 0 0 0-1-1H3z"/>
+                                <path d="M16 12.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Zm-3.146-1.854a.5.5 0 0 0-.708.708L12.293 12l-.147.146a.5.5 0 1 0 .708.708L13 12.707l.146.147a.5.5 0 0 0 .708-.708L13.707 12l.147-.146a.5.5 0 0 0-.708-.708L13 11.293l-.146-.147z"/>
+                            </svg>
+                            Pending approval
+                        </div>
+                        <div class="stat-value" title="Messages awaiting review">{{.PendingMessages}}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gb-actions">
+                <a href="/admin/guestbook/{{.Guestbook.ID}}" class="btn btn-primary btn-sm" aria-label="Review messages for guestbook #{{.Guestbook.ID}}">
+                    Review Messages
+                </a>
+
+                <a href="/admin/guestbook/{{.Guestbook.ID}}/edit" class="btn btn-outline btn-sm">Edit settings</a>
+                <a href="/guestbook/{{.Guestbook.ID}}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">View public page</a>
+                <a href="/admin/guestbook/{{.Guestbook.ID}}/embed" class="btn btn-outline btn-sm">Get embed code</a>
+                <form action="/admin/guestbook/{{.Guestbook.ID}}/delete" method="post" style="display: inline; margin: 0;" onsubmit="return confirm('Are you sure you want to delete this guestbook? This action cannot be undone.');">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                 </form>
-            </td>
-        </tr>
-        {{else}}
-        <tr>
-            <td colspan="3">No guestbooks found.</td>
-        </tr>
+            </div>
+        </div>
         {{end}}
-    </tbody>
-</table>
+    </div>
+    {{else}}
+    <div class="empty-state">
+        <div class="empty-state-icon">📭</div>
+        <div class="empty-state-title">No Guestbooks Yet</div>
+        <div class="empty-state-description">
+            Create your first guestbook to start collecting messages from your visitors.
+        </div>
+        <a href="/admin/guestbook/new" class="btn btn-primary">Create Your First Guestbook</a>
+    </div>
+    {{end}}
+</div>
 {{end}}
