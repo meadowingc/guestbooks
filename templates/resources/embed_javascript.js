@@ -118,6 +118,7 @@
               link.href = message.Website ? message.Website : "#";
               link.textContent = message.Name;
               link.target = "_blank";
+              link.rel = "ugc nofollow noopener";
               boldElement.appendChild(link);
             } else {
               var textNode = document.createTextNode(message.Name);
