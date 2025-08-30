@@ -117,6 +117,35 @@ func initRouter() *chi.Mux {
 	r.Post("/forgot-password", ForgotPasswordHandler)
 
 	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
+		// Basic CSRF guard for state-changing requests: allow only same-origin POSTs.
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+					origin := r.Header.Get("Origin")
+					referer := r.Header.Get("Referer")
+					// In production, PUBLIC_URL should be the absolute origin like https://example.com
+					allowed := constants.PUBLIC_URL
+					if constants.DEBUG_MODE {
+						// Accept current host as origin in debug
+						allowed = "//" + r.Host
+					}
+
+					// If an Origin is present, require it to contain the allowed host; otherwise, use Referer as a fallback.
+					if origin != "" {
+						if !strings.Contains(origin, r.Host) && !strings.Contains(origin, strings.TrimPrefix(allowed, "//")) {
+							http.Error(w, "CSRF check failed", http.StatusForbidden)
+							return
+						}
+					} else if referer != "" {
+						if !strings.Contains(referer, r.Host) && !strings.Contains(referer, strings.TrimPrefix(allowed, "//")) {
+							http.Error(w, "CSRF check failed", http.StatusForbidden)
+							return
+						}
+					}
+				}
+				next.ServeHTTP(w, r)
+			})
+		})
 		r.Get("/", AdminGuestbookList)
 		r.Get("/settings", AdminUserSettings)
 

@@ -151,9 +151,11 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 		db.Save(&admin)
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  string(AdminTokenCookieName),
-			Value: token,
-			Path:  "/",
+			Name:     string(AdminTokenCookieName),
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -197,9 +199,11 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 		}
 
 		http.SetCookie(w, &http.Cookie{
-			Name:  string(AdminTokenCookieName),
-			Value: token,
-			Path:  "/",
+			Name:     string(AdminTokenCookieName),
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
 
 		// Redirect to the admin sign-in page after successful sign-up
@@ -367,6 +371,8 @@ func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
 		return
 	}
+
+	log.Printf("admin=%d username=%q ip=%s action=delete_guestbook guestbook_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID)
 
 	result = db.Delete(&guestbook, guestbookID)
 	if result.Error != nil {
@@ -566,6 +572,14 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
+
+	// Ensure the message belongs to the same guestbook scoped in the URL
+	if message.GuestbookID != guestbook.ID {
+		http.Error(w, "Message does not belong to this guestbook", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("admin=%d username=%q ip=%s action=delete_message guestbook_id=%d message_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, message.ID)
 
 	result = db.Delete(&message, messageID)
 	if result.Error != nil {
