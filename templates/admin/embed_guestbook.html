@@ -115,13 +115,11 @@
                     </div>
                     <pre class="line-numbers"><code id="js-code" class="language-html">&lt;!-- Guestbook Script --&gt;
 &lt;script async src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js"&gt;&lt;/script&gt;
-
 &lt;!-- Guestbook Form --&gt;
 &lt;div id="guestbooks___guestbook-form-container"&gt;
   &lt;form id="guestbooks___guestbook-form" 
         action="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit" 
         method="post"&gt;
-    
     &lt;div class="guestbooks___input-container"&gt;
       &lt;input type="text" 
              id="name" 
@@ -129,16 +127,13 @@
              placeholder="Your Name" 
              required&gt;
     &lt;/div&gt;
-    
     &lt;div class="guestbooks___input-container"&gt;
       &lt;input type="url" 
              id="website" 
              name="website" 
              placeholder="Website (optional)"&gt;
     &lt;/div&gt;
-    
     &lt;div id="guestbooks___challenge-answer-container"&gt;&lt;/div&gt;
-    
     &lt;div class="guestbooks___input-container"&gt;
       &lt;textarea id="text" 
                 name="text" 
@@ -147,17 +142,14 @@
                 style="width: 100%; box-sizing: border-box; resize: vertical;"
                 required&gt;&lt;/textarea&gt;
     &lt;/div&gt;
-    
     &lt;button type="submit"&gt;Sign Guestbook&lt;/button&gt;
     &lt;div id="guestbooks___error-message"&gt;&lt;/div&gt;
   &lt;/form&gt;
 &lt;/div&gt;
-
 &lt;!-- Attribution (optional but appreciated!) --&gt;
 &lt;div id="guestbooks___guestbook-made-with" style="text-align: right; margin-top: 10px;"&gt;
   &lt;small&gt;Powered by &lt;a href="{{.Data.PublicHostUrl}}" target="_blank"&gt;Guestbooks&lt;/a&gt;&lt;/small&gt;
 &lt;/div&gt;
-
 &lt;!-- Messages Section --&gt;
 &lt;hr style="margin: 2em 0;"/&gt;
 &lt;h3 id="guestbooks___guestbook-messages-header"&gt;Messages&lt;/h3&gt;
