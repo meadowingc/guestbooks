@@ -28,6 +28,7 @@ import (
 )
 
 var db *gorm.DB
+var messageCache *MessageCache
 
 func main() {
 	viper.SetConfigName("config")
@@ -38,6 +39,8 @@ func main() {
 	}
 
 	initDatabase()
+	initCache()
+
 	// Setup a channel to listen for termination signals
 	signals := make(chan os.Signal, 1)
 	// Notify signals channel on SIGINT and SIGTERM
@@ -80,6 +83,16 @@ func initDatabase() {
 	if err != nil {
 		log.Fatalf("failed to migrate database: %v", err)
 	}
+}
+
+func initCache() {
+	var err error
+	// Initialize cache with 1000 entries and 10 minute TTL
+	messageCache, err = NewMessageCache(1000, 10*time.Minute)
+	if err != nil {
+		log.Fatalf("failed to initialize cache: %v", err)
+	}
+	log.Println("Message cache initialized (size: 1000, TTL: 10m)")
 }
 
 func initRouter() *chi.Mux {
@@ -244,6 +257,14 @@ func initRouter() *chi.Mux {
 					log.Fatal(err)
 				}
 
+				// Try to get from cache first
+				if cachedMessages, ok := messageCache.GetMessages(uint(guestbookIDUint)); ok {
+					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("X-Cache", "HIT")
+					json.NewEncoder(w).Encode(cachedMessages)
+					return
+				}
+
 				// v1 API - return all messages at top level of response, without pagination (backward compatibility)
 				var messages []Message
 				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).
@@ -254,7 +275,11 @@ func initRouter() *chi.Mux {
 					return
 				}
 
+				// Store in cache
+				messageCache.SetMessages(uint(guestbookIDUint), messages)
+
 				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cache", "MISS")
 				json.NewEncoder(w).Encode(messages)
 			})
 		})
@@ -285,13 +310,26 @@ func initRouter() *chi.Mux {
 					}
 				}
 
+				// Try to get from cache first
+				if cachedResponse, ok := messageCache.GetPaginatedResponse(uint(guestbookIDUint), page, limit); ok {
+					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set("X-Cache", "HIT")
+					json.NewEncoder(w).Encode(cachedResponse)
+					return
+				}
+
 				offset := (page - 1) * limit
 
+				// Try to get count from cache
 				var totalCount int64
-				countResult := db.Model(&Message{}).Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).Count(&totalCount)
-				if countResult.Error != nil {
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-					return
+				var countCached bool
+				if totalCount, countCached = messageCache.GetCount(uint(guestbookIDUint)); !countCached {
+					countResult := db.Model(&Message{}).Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).Count(&totalCount)
+					if countResult.Error != nil {
+						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+						return
+					}
+					messageCache.SetCount(uint(guestbookIDUint), totalCount)
 				}
 
 				var messages []Message
@@ -307,9 +345,9 @@ func initRouter() *chi.Mux {
 
 				totalPages := int((totalCount + int64(limit) - 1) / int64(limit))
 
-				response := map[string]interface{}{
+				response := map[string]any{
 					"messages": messages,
-					"pagination": map[string]interface{}{
+					"pagination": map[string]any{
 						"page":        page,
 						"limit":       limit,
 						"total":       totalCount,
@@ -319,7 +357,12 @@ func initRouter() *chi.Mux {
 					},
 				}
 
+				// Store in cache
+				messageCache.SetPaginatedResponse(uint(guestbookIDUint), page, limit, response)
+
 				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Cache", "MISS")
+
 				json.NewEncoder(w).Encode(response)
 			})
 		})

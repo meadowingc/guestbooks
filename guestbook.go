@@ -136,6 +136,9 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate cache for this guestbook since we added a new message
+	messageCache.InvalidateGuestbook(guestbook.ID)
+
 	// now send an email to the user if necessary
 	var adminUser AdminUser
 	result = db.First(&adminUser, "id = ?", guestbook.AdminUserID)

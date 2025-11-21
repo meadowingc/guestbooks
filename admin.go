@@ -23,7 +23,7 @@ type AdminCookieName string
 const AdminUserCookieName = AdminCookieName("admin_user")
 const AdminTokenCookieName = AdminCookieName("admin_token")
 
-func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data interface{}) {
+func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data any) {
 	templateData := struct {
 		CurrentUser *AdminUser
 		Data        any
@@ -380,6 +380,9 @@ func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Invalidate cache for this guestbook since it was deleted
+	messageCache.InvalidateGuestbook(guestbook.ID)
+
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
@@ -545,6 +548,9 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Invalidate cache for this guestbook since message was edited
+		messageCache.InvalidateGuestbook(guestbook.ID)
+
 		http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
 	}
 }
@@ -586,6 +592,9 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error deleting message", http.StatusInternalServerError)
 		return
 	}
+
+	// Invalidate cache for this guestbook since message was deleted
+	messageCache.InvalidateGuestbook(guestbook.ID)
 
 	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
 }
