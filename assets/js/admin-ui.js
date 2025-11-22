@@ -1,6 +1,191 @@
 // Admin UI Enhancements
 document.addEventListener('DOMContentLoaded', function() {
     
+    // Bulk message deletion functionality
+    const messagesContainer = document.getElementById('messages-container');
+    if (messagesContainer) {
+        const selectAllCheckbox = document.getElementById('select-all-messages');
+        const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+        const bulkActions = document.getElementById('bulk-actions');
+        const selectedCountSpan = document.getElementById('selected-count');
+        const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+        
+        // Track selected message IDs
+        let selectedMessageIds = new Set();
+        
+        // Update UI based on selection
+        function updateBulkActionsUI() {
+            const count = selectedMessageIds.size;
+            if (count > 0) {
+                bulkActions.style.display = 'block';
+                selectedCountSpan.textContent = `${count} message${count !== 1 ? 's' : ''} selected`;
+            } else {
+                bulkActions.style.display = 'none';
+            }
+            
+            // Update select all checkbox state
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = count === messageCheckboxes.length && count > 0;
+                selectAllCheckbox.indeterminate = count > 0 && count < messageCheckboxes.length;
+            }
+        }
+        
+        // Handle individual checkbox change
+        messageCheckboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const messageId = this.getAttribute('data-message-id');
+                const messageCard = this.closest('.message-card');
+                
+                if (this.checked) {
+                    selectedMessageIds.add(messageId);
+                    messageCard.style.background = 'var(--primary-light)';
+                } else {
+                    selectedMessageIds.delete(messageId);
+                    messageCard.style.background = 'var(--gray-50)';
+                }
+                
+                updateBulkActionsUI();
+            });
+        });
+        
+        // Handle select all checkbox
+        if (selectAllCheckbox) {
+            selectAllCheckbox.addEventListener('change', function() {
+                const isChecked = this.checked;
+                
+                messageCheckboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                    const messageId = checkbox.getAttribute('data-message-id');
+                    const messageCard = checkbox.closest('.message-card');
+                    
+                    if (isChecked) {
+                        selectedMessageIds.add(messageId);
+                        messageCard.style.background = 'var(--primary-light)';
+                    } else {
+                        selectedMessageIds.delete(messageId);
+                        messageCard.style.background = 'var(--gray-50)';
+                    }
+                });
+                
+                updateBulkActionsUI();
+            });
+        }
+        
+        // Handle bulk delete button
+        if (bulkDeleteBtn) {
+            bulkDeleteBtn.addEventListener('click', function() {
+                const count = selectedMessageIds.size;
+                
+                if (count === 0) return;
+                
+                // Create custom confirmation modal
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                    animation: fadeIn 0.2s ease;
+                `;
+                
+                const dialog = document.createElement('div');
+                dialog.style.cssText = `
+                    background: white;
+                    border-radius: var(--border-radius);
+                    padding: 2rem;
+                    max-width: 400px;
+                    box-shadow: var(--shadow-lg);
+                    animation: slideIn 0.3s ease;
+                `;
+                
+                dialog.innerHTML = `
+                    <h3 style="margin-top: 0; color: var(--error-color);">⚠️ Confirm Bulk Deletion</h3>
+                    <p style="color: var(--gray-700);">Are you sure you want to delete <strong>${count} message${count !== 1 ? 's' : ''}</strong>? This action cannot be undone.</p>
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                        <button class="btn btn-outline" id="cancel-bulk-delete">Cancel</button>
+                        <button class="btn btn-danger" id="confirm-bulk-delete">Delete ${count} Message${count !== 1 ? 's' : ''}</button>
+                    </div>
+                `;
+                
+                modal.appendChild(dialog);
+                document.body.appendChild(modal);
+                
+                // Handle cancel
+                document.getElementById('cancel-bulk-delete').onclick = () => modal.remove();
+                
+                // Handle confirm
+                document.getElementById('confirm-bulk-delete').onclick = () => {
+                    modal.remove();
+                    
+                    // Perform bulk delete
+                    const guestbookId = window.location.pathname.split('/')[3];
+                    const messageIds = Array.from(selectedMessageIds);
+                    
+                    // Show loading state
+                    bulkDeleteBtn.disabled = true;
+                    bulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
+                    
+                    fetch(`/admin/guestbook/${guestbookId}/messages/bulk-delete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message_ids: messageIds })
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            // Remove deleted messages from DOM
+                            messageIds.forEach(id => {
+                                const messageCard = document.querySelector(`.message-card[data-message-id="${id}"]`);
+                                if (messageCard) {
+                                    messageCard.style.animation = 'fadeOut 0.3s ease';
+                                    setTimeout(() => messageCard.remove(), 300);
+                                }
+                            });
+                            
+                            // Clear selection
+                            selectedMessageIds.clear();
+                            updateBulkActionsUI();
+                            
+                            // Show success message
+                            if (window.showToast) {
+                                window.showToast(`Successfully deleted ${count} message${count !== 1 ? 's' : ''}`, 'success');
+                            }
+                            
+                            // Reload page after animation
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 1000);
+                        } else {
+                            throw new Error('Failed to delete messages');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        if (window.showToast) {
+                            window.showToast('Failed to delete messages. Please try again.', 'error');
+                        }
+                        bulkDeleteBtn.disabled = false;
+                        bulkDeleteBtn.innerHTML = 'Delete Selected';
+                    });
+                };
+                
+                // Close on background click
+                modal.onclick = (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                    }
+                };
+            });
+        }
+    }
+    
     // Add fade-in animation to cards
     const cards = document.querySelectorAll('.card, .guestbook-card');
     cards.forEach((card, index) => {
@@ -224,6 +409,14 @@ style.textContent = `
         to {
             transform: translateY(0);
             opacity: 1;
+        }
+    }
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+        }
+        to {
+            opacity: 0;
         }
     }
 `;

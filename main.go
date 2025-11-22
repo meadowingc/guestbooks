@@ -185,6 +185,8 @@ func initRouter() *chi.Mux {
 
 			r.Post("/delete", AdminDeleteGuestbook)
 
+			r.Post("/messages/bulk-delete", AdminBulkDeleteMessages)
+
 			r.Route("/message/{messageID}", func(r chi.Router) {
 				r.Get("/edit", AdminEditMessage)
 				r.Post("/edit", AdminEditMessage)

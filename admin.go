@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"guestbook/constants"
 	"html/template"
 	"log"
@@ -597,6 +599,85 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	messageCache.InvalidateGuestbook(guestbook.ID)
 
 	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
+}
+
+func AdminBulkDeleteMessages(w http.ResponseWriter, r *http.Request) {
+	guestbookID := chi.URLParam(r, "guestbookID")
+
+	var guestbook Guestbook
+	result := db.First(&guestbook, guestbookID)
+	if result.Error != nil {
+		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	// Parse the request body
+	var requestBody struct {
+		MessageIDs []string `json:"message_ids"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(requestBody.MessageIDs) == 0 {
+		http.Error(w, "No messages specified for deletion", http.StatusBadRequest)
+		return
+	}
+
+	// Convert string IDs to uints and validate all messages belong to this guestbook
+	var messageIDs []uint
+	for _, idStr := range requestBody.MessageIDs {
+		var id int
+		_, err := fmt.Sscanf(idStr, "%d", &id)
+		if err != nil || id <= 0 {
+			http.Error(w, fmt.Sprintf("Invalid message ID: %s", idStr), http.StatusBadRequest)
+			return
+		}
+		messageIDs = append(messageIDs, uint(id))
+	}
+
+	// Verify all messages belong to this guestbook
+	var count int64
+	db.Model(&Message{}).Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Count(&count)
+	if count != int64(len(messageIDs)) {
+		http.Error(w, "Some messages do not belong to this guestbook", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("admin=%d username=%q ip=%s action=bulk_delete_messages guestbook_id=%d message_count=%d message_ids=%v",
+		currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, len(messageIDs), messageIDs)
+
+	// Delete messages in a transaction
+	err = db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Delete(&Message{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != int64(len(messageIDs)) {
+			return fmt.Errorf("expected to delete %d messages but only deleted %d", len(messageIDs), result.RowsAffected)
+		}
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, "Error deleting messages", http.StatusInternalServerError)
+		return
+	}
+
+	// Invalidate cache for this guestbook since messages were deleted
+	messageCache.InvalidateGuestbook(guestbook.ID)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Messages deleted successfully"))
 }
 
 func AdminUserSettings(w http.ResponseWriter, r *http.Request) {

@@ -32,11 +32,28 @@
                 </p>
             </div>
             
-            <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="flex-between mb-3" style="align-items: center;">
+                <div>
+                    <label style="cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="select-all-messages" style="margin-right: 0.5rem;">
+                        <span class="text-small">Select All</span>
+                    </label>
+                </div>
+                <div id="bulk-actions" style="display: none;">
+                    <span id="selected-count" class="text-small" style="margin-right: 1rem; color: var(--gray-700);"></span>
+                    <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm">
+                        Delete Selected
+                    </button>
+                </div>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 1rem;" id="messages-container">
                 {{range .Data.Messages}}
-                <div style="padding: 1rem; background: var(--gray-50); border-radius: var(--border-radius); border-left: 3px solid {{if .Approved}}var(--success-color){{else}}var(--warning-color){{end}};">
+                <div class="message-card" data-message-id="{{.ID}}" style="padding: 1rem; background: var(--gray-50); border-radius: var(--border-radius); border-left: 3px solid {{if .Approved}}var(--success-color){{else}}var(--warning-color){{end}};">
                     <div class="flex-between mb-2">
-                        <div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <input type="checkbox" class="message-checkbox" data-message-id="{{.ID}}" style="cursor: pointer;">
+                            <div>
                             {{if .Website}}
                             <strong><a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a></strong>
                             {{else}}
@@ -47,6 +64,7 @@
                             {{else}}
                             <span class="badge badge-warning">Pending</span>
                             {{end}}
+                            </div>
                         </div>
                         <div class="action-group">
                             <a href="/admin/guestbook/{{$.Data.ID}}/message/{{.ID}}/edit" class="btn btn-outline btn-sm">Edit</a>
