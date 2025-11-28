@@ -663,3 +663,595 @@ func TestBulkDeleteSelectAll(t *testing.T) {
 
 	t.Log("Select all tests passed!")
 }
+
+// TestReplyToMessage tests the admin reply functionality
+func TestReplyToMessage(t *testing.T) {
+	// Use incognito mode to avoid session conflicts with previous tests
+	page := browser.MustIncognito().MustPage(testBaseURL)
+	defer page.MustClose()
+
+	username := fmt.Sprintf("replytest_%d", time.Now().Unix())
+	password := "testpassword123"
+	websiteURL := "https://replytest.com"
+
+	// Step 1: Sign up
+	t.Log("Step 1: Creating admin account")
+	page.MustNavigate(testBaseURL + "/admin/signup")
+	page.MustWaitLoad()
+	page.MustElement("input[name='username']").MustInput(username)
+	page.MustElement("input[name='password']").MustInput(password)
+	page.MustElement("input[type='checkbox']").MustClick()
+	page.MustElement("form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	page.MustWaitStable()
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 2: Create a guestbook
+	t.Log("Step 2: Creating guestbook")
+	page.MustNavigate(testBaseURL + "/admin/guestbook/new")
+	page.MustWaitLoad()
+	page.MustElement("input[name='websiteURL']").MustInput(websiteURL)
+	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Get guestbook ID
+	guestbookLink := page.MustElement("a[href*='/admin/guestbook/']:not([href*='/new'])").MustProperty("href").String()
+	var guestbookID string
+	fmt.Sscanf(guestbookLink, testBaseURL+"/admin/guestbook/%s", &guestbookID)
+	t.Logf("Created guestbook ID: %s", guestbookID)
+
+	// Step 3: Create a test message directly in the database
+	t.Log("Step 3: Creating test message")
+	var guestbook Guestbook
+	db.First(&guestbook, guestbookID)
+
+	testMessage := Message{
+		Name:        "Test Visitor",
+		Text:        "Hello, this is a test message!",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&testMessage)
+
+	// Step 4: Navigate to admin panel and reply to the message
+	t.Log("Step 4: Replying to message via admin panel")
+	page.MustNavigate(testBaseURL + "/admin/guestbook/" + guestbookID)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify message is displayed
+	pageText := page.MustElement("body").MustText()
+	if !strings.Contains(pageText, "Test Visitor") {
+		t.Error("Test message should be displayed on admin page")
+	}
+
+	// Click the Reply button
+	replyBtn := page.MustElement(".reply-btn")
+	replyBtn.MustClick()
+	time.Sleep(300 * time.Millisecond)
+
+	// Verify modal is displayed
+	modal := page.MustElement("#reply-modal")
+	if !modal.MustVisible() {
+		t.Error("Reply modal should be visible after clicking Reply button")
+	}
+
+	// Enter reply text and submit
+	replyText := "Thank you for your message! - Admin"
+	page.MustElement("#reply-text").MustInput(replyText)
+	page.MustElement("#reply-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 5: Verify reply appears in admin panel
+	t.Log("Step 5: Verifying reply appears in admin panel")
+	pageText = page.MustElement("body").MustText()
+	if !strings.Contains(pageText, replyText) {
+		t.Errorf("Reply text should appear on admin page, got: %s", pageText)
+	}
+	if !strings.Contains(pageText, username) {
+		t.Errorf("Reply should show admin username '%s' as author", username)
+	}
+
+	// Step 6: Verify reply is stored in database correctly
+	t.Log("Step 6: Verifying reply in database")
+	var reply Message
+	result := db.Where("parent_message_id = ?", testMessage.ID).First(&reply)
+	if result.Error != nil {
+		t.Errorf("Reply should exist in database: %v", result.Error)
+	}
+	if reply.Name != username {
+		t.Errorf("Reply author should be '%s', got '%s'", username, reply.Name)
+	}
+	if reply.Text != replyText {
+		t.Errorf("Reply text should be '%s', got '%s'", replyText, reply.Text)
+	}
+	if !reply.Approved {
+		t.Error("Reply should be auto-approved")
+	}
+	if reply.ParentMessageID == nil || *reply.ParentMessageID != testMessage.ID {
+		t.Error("Reply should have correct parent message ID")
+	}
+
+	// Step 7: Verify reply appears on public guestbook page
+	t.Log("Step 7: Verifying reply on public page")
+	publicURL := testBaseURL + "/guestbook/" + guestbookID
+	page.MustNavigate(publicURL)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond) // Wait for JS to render
+
+	publicPageText := page.MustElement("body").MustText()
+	if !strings.Contains(publicPageText, replyText) {
+		t.Errorf("Reply should appear on public page, got: %s", publicPageText)
+	}
+
+	// Verify reply is nested (has reply class)
+	replyElements := page.MustElements(".guestbook-message-reply")
+	if len(replyElements) == 0 {
+		t.Error("Reply should be displayed with 'guestbook-message-reply' class")
+	}
+
+	t.Log("Reply test passed!")
+}
+
+// TestMultipleRepliesToSameMessage tests adding multiple replies to a single message
+func TestMultipleRepliesToSameMessage(t *testing.T) {
+	t.Log("Testing multiple replies to the same message")
+
+	// Create test data directly in database
+	user := AdminUser{
+		Username:     fmt.Sprintf("multireply_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("multitoken_%d", time.Now().Unix()),
+	}
+	db.Create(&user)
+
+	guestbook := Guestbook{
+		WebsiteURL:  "https://multireply.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook)
+
+	parentMessage := Message{
+		Name:        "Visitor",
+		Text:        "Original message",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&parentMessage)
+
+	// Create multiple replies
+	replies := []string{"First reply", "Second reply", "Third reply"}
+	for _, text := range replies {
+		reply := Message{
+			Name:            user.Username,
+			Text:            text,
+			GuestbookID:     guestbook.ID,
+			Approved:        true,
+			ParentMessageID: &parentMessage.ID,
+		}
+		db.Create(&reply)
+	}
+
+	// Verify all replies are in database
+	var replyCount int64
+	db.Model(&Message{}).Where("parent_message_id = ?", parentMessage.ID).Count(&replyCount)
+	if replyCount != 3 {
+		t.Errorf("Expected 3 replies, got %d", replyCount)
+	}
+
+	// Verify replies appear on public page
+	page := browser.MustPage(testBaseURL + fmt.Sprintf("/guestbook/%d", guestbook.ID))
+	defer page.MustClose()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	pageText := page.MustElement("body").MustText()
+	for _, text := range replies {
+		if !strings.Contains(pageText, text) {
+			t.Errorf("Reply '%s' should appear on public page", text)
+		}
+	}
+
+	replyElements := page.MustElements(".guestbook-message-reply")
+	if len(replyElements) != 3 {
+		t.Errorf("Expected 3 reply elements, got %d", len(replyElements))
+	}
+
+	t.Log("Multiple replies test passed!")
+}
+
+// TestReplyOnlyOneLevelDeep tests that replies to replies are not allowed
+func TestReplyOnlyOneLevelDeep(t *testing.T) {
+	t.Log("Testing that nested replies (reply to reply) are not allowed")
+
+	// Create test data
+	user := AdminUser{
+		Username:     fmt.Sprintf("nestedtest_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("nestedtoken_%d", time.Now().Unix()),
+	}
+	db.Create(&user)
+
+	guestbook := Guestbook{
+		WebsiteURL:  "https://nestedtest.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook)
+
+	parentMessage := Message{
+		Name:        "Visitor",
+		Text:        "Original message",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&parentMessage)
+
+	// Create a reply
+	reply := Message{
+		Name:            user.Username,
+		Text:            "This is a reply",
+		GuestbookID:     guestbook.ID,
+		Approved:        true,
+		ParentMessageID: &parentMessage.ID,
+	}
+	db.Create(&reply)
+
+	// Attempt to reply to the reply via HTTP request
+	// This should fail with an error
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	replyToReplyURL := fmt.Sprintf("%s/admin/guestbook/%d/message/%d/reply", testBaseURL, guestbook.ID, reply.ID)
+	req, _ := http.NewRequest("POST", replyToReplyURL, strings.NewReader("text=Nested reply attempt"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should get a bad request or error response
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
+		t.Error("Replying to a reply should not be allowed")
+	}
+
+	// Verify no nested reply was created
+	var nestedReplyCount int64
+	db.Model(&Message{}).Where("parent_message_id = ?", reply.ID).Count(&nestedReplyCount)
+	if nestedReplyCount != 0 {
+		t.Error("No nested replies should exist")
+	}
+
+	t.Log("Nested reply prevention test passed!")
+}
+
+// TestReplyEmptyTextValidation tests that empty replies are rejected
+func TestReplyEmptyTextValidation(t *testing.T) {
+	t.Log("Testing empty reply validation")
+
+	user := AdminUser{
+		Username:     fmt.Sprintf("emptyreply_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("emptytoken_%d", time.Now().Unix()),
+	}
+	db.Create(&user)
+
+	guestbook := Guestbook{
+		WebsiteURL:  "https://emptyreply.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook)
+
+	message := Message{
+		Name:        "Visitor",
+		Text:        "A message",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&message)
+
+	// Try to submit empty reply
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	replyURL := fmt.Sprintf("%s/admin/guestbook/%d/message/%d/reply", testBaseURL, guestbook.ID, message.ID)
+	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text="))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should get a bad request response
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
+		t.Error("Empty reply should be rejected")
+	}
+
+	// Verify no reply was created
+	var replyCount int64
+	db.Model(&Message{}).Where("parent_message_id = ?", message.ID).Count(&replyCount)
+	if replyCount != 0 {
+		t.Error("No reply should be created for empty text")
+	}
+
+	t.Log("Empty reply validation test passed!")
+}
+
+// TestReplyCrossGuestbookIsolation tests that users can't reply to messages in other users' guestbooks
+func TestReplyCrossGuestbookIsolation(t *testing.T) {
+	t.Log("Testing cross-guestbook reply isolation")
+
+	// Create two users with their own guestbooks
+	user1 := AdminUser{
+		Username:     fmt.Sprintf("replyuser1_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("replytoken1_%d", time.Now().Unix()),
+	}
+	db.Create(&user1)
+
+	user2 := AdminUser{
+		Username:     fmt.Sprintf("replyuser2_%d", time.Now().UnixNano()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("replytoken2_%d", time.Now().UnixNano()),
+	}
+	db.Create(&user2)
+
+	guestbook1 := Guestbook{
+		WebsiteURL:  "https://replyuser1.com",
+		AdminUserID: user1.ID,
+	}
+	db.Create(&guestbook1)
+
+	guestbook2 := Guestbook{
+		WebsiteURL:  "https://replyuser2.com",
+		AdminUserID: user2.ID,
+	}
+	db.Create(&guestbook2)
+
+	// Create message in user2's guestbook
+	message := Message{
+		Name:        "Visitor",
+		Text:        "Message in user2's guestbook",
+		GuestbookID: guestbook2.ID,
+		Approved:    true,
+	}
+	db.Create(&message)
+
+	// User1 tries to reply to a message in user2's guestbook
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Try using user2's guestbook ID but user1's token
+	replyURL := fmt.Sprintf("%s/admin/guestbook/%d/message/%d/reply", testBaseURL, guestbook2.ID, message.ID)
+	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Malicious reply"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user1.SessionToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should be forbidden
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
+		t.Error("User should not be able to reply to messages in other users' guestbooks")
+	}
+
+	// Verify no reply was created
+	var replyCount int64
+	db.Model(&Message{}).Where("parent_message_id = ?", message.ID).Count(&replyCount)
+	if replyCount != 0 {
+		t.Error("No reply should exist from unauthorized user")
+	}
+
+	t.Log("Cross-guestbook reply isolation test passed!")
+}
+
+// TestReplyToMessageFromDifferentGuestbook tests that users can't reply to messages not in the specified guestbook
+func TestReplyToMessageFromDifferentGuestbook(t *testing.T) {
+	t.Log("Testing reply to message from different guestbook")
+
+	user := AdminUser{
+		Username:     fmt.Sprintf("diffgb_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("diffgbtoken_%d", time.Now().Unix()),
+	}
+	db.Create(&user)
+
+	// Create two guestbooks owned by the same user
+	guestbook1 := Guestbook{
+		WebsiteURL:  "https://diffgb1.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook1)
+
+	guestbook2 := Guestbook{
+		WebsiteURL:  "https://diffgb2.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook2)
+
+	// Create message in guestbook2
+	message := Message{
+		Name:        "Visitor",
+		Text:        "Message in guestbook2",
+		GuestbookID: guestbook2.ID,
+		Approved:    true,
+	}
+	db.Create(&message)
+
+	// Try to reply to message using guestbook1's URL (message belongs to guestbook2)
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	replyURL := fmt.Sprintf("%s/admin/guestbook/%d/message/%d/reply", testBaseURL, guestbook1.ID, message.ID)
+	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Cross-guestbook reply"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should be rejected
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
+		t.Error("Reply to message from different guestbook should be rejected")
+	}
+
+	// Verify no reply was created
+	var replyCount int64
+	db.Model(&Message{}).Where("parent_message_id = ?", message.ID).Count(&replyCount)
+	if replyCount != 0 {
+		t.Error("No reply should be created for cross-guestbook message")
+	}
+
+	t.Log("Different guestbook message reply test passed!")
+}
+
+// TestReplyCacheInvalidation tests that cache is invalidated when a reply is added
+func TestReplyCacheInvalidation(t *testing.T) {
+	// Use incognito mode to avoid session conflicts
+	page := browser.MustIncognito().MustPage(testBaseURL)
+	defer page.MustClose()
+
+	username := fmt.Sprintf("cachetest_%d", time.Now().Unix())
+	password := "testpassword123"
+
+	// Setup account and guestbook
+	t.Log("Setting up account and guestbook")
+	page.MustNavigate(testBaseURL + "/admin/signup")
+	page.MustWaitLoad()
+	page.MustElement("input[name='username']").MustInput(username)
+	page.MustElement("input[name='password']").MustInput(password)
+	page.MustElement("input[type='checkbox']").MustClick()
+	page.MustElement("form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	page.MustWaitStable()
+
+	page.MustNavigate(testBaseURL + "/admin/guestbook/new")
+	page.MustWaitLoad()
+	page.MustElement("input[name='websiteURL']").MustInput("https://cachetest.com")
+	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	guestbookLink := page.MustElement("a[href*='/admin/guestbook/']:not([href*='/new'])").MustProperty("href").String()
+	var guestbookID string
+	fmt.Sscanf(guestbookLink, testBaseURL+"/admin/guestbook/%s", &guestbookID)
+
+	// Create a message
+	var guestbook Guestbook
+	db.First(&guestbook, guestbookID)
+
+	message := Message{
+		Name:        "Cache Test User",
+		Text:        "Test message for cache",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&message)
+
+	// Load public page to populate cache
+	t.Log("Loading public page to populate cache")
+	publicURL := testBaseURL + "/guestbook/" + guestbookID
+	page.MustNavigate(publicURL)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	pageText := page.MustElement("body").MustText()
+	if !strings.Contains(pageText, "Test message for cache") {
+		t.Error("Original message should appear on public page")
+	}
+
+	// Add a reply via admin
+	t.Log("Adding reply via admin panel")
+	page.MustNavigate(testBaseURL + "/admin/guestbook/" + guestbookID)
+	page.MustWaitLoad()
+	time.Sleep(300 * time.Millisecond)
+
+	page.MustElement(".reply-btn").MustClick()
+	time.Sleep(300 * time.Millisecond)
+	page.MustElement("#reply-text").MustInput("Cache invalidation test reply")
+	page.MustElement("#reply-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Load public page again - reply should appear (cache was invalidated)
+	t.Log("Verifying cache was invalidated")
+	page.MustNavigate(publicURL)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	pageText = page.MustElement("body").MustText()
+	if !strings.Contains(pageText, "Cache invalidation test reply") {
+		t.Error("Reply should appear on public page after cache invalidation")
+	}
+
+	t.Log("Cache invalidation test passed!")
+}
+
+// TestReplyToNonExistentMessage tests error handling for non-existent messages
+func TestReplyToNonExistentMessage(t *testing.T) {
+	t.Log("Testing reply to non-existent message")
+
+	user := AdminUser{
+		Username:     fmt.Sprintf("nonexist_%d", time.Now().Unix()),
+		PasswordHash: []byte("password"),
+		SessionToken: fmt.Sprintf("nonexisttoken_%d", time.Now().Unix()),
+	}
+	db.Create(&user)
+
+	guestbook := Guestbook{
+		WebsiteURL:  "https://nonexist.com",
+		AdminUserID: user.ID,
+	}
+	db.Create(&guestbook)
+
+	// Try to reply to a non-existent message ID
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	nonExistentMessageID := 999999
+	replyURL := fmt.Sprintf("%s/admin/guestbook/%d/message/%d/reply", testBaseURL, guestbook.ID, nonExistentMessageID)
+	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Reply to nothing"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to make request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Should get a not found or error response
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
+		t.Error("Reply to non-existent message should fail")
+	}
+
+	t.Log("Non-existent message reply test passed!")
+}
