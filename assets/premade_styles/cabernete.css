@@ -87,6 +87,20 @@ h1#title {
   margin-top: 20px;
 }
 
+/* Reply styling */
+.guestbook-message-reply {
+  margin-left: 2.5rem;
+  padding-left: 1rem;
+  border-left: 3px solid #8e576f;
+  opacity: 0.95;
+}
+
+.guestbook-message-reply blockquote {
+  margin: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
 @media (max-width: 640px) {
   .container {
     margin-top: 15px;

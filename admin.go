@@ -261,7 +261,9 @@ func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
 
 	var guestbook Guestbook
 	result := db.Preload("Messages", func(db *gorm.DB) *gorm.DB {
-		return db.Order("created_at desc")
+		return db.Where("parent_message_id IS NULL").Order("created_at desc")
+	}).Preload("Messages.Replies", func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at asc")
 	}).First(&guestbook, "id = ?", guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
@@ -596,6 +598,77 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Invalidate cache for this guestbook since message was deleted
+	messageCache.InvalidateGuestbook(guestbook.ID)
+
+	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)
+}
+
+func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
+	guestbookID := chi.URLParam(r, "guestbookID")
+	messageID := chi.URLParam(r, "messageID")
+	replyText := strings.TrimSpace(r.FormValue("text"))
+
+	if replyText == "" {
+		http.Error(w, "Reply text cannot be empty", http.StatusBadRequest)
+		return
+	}
+
+	var guestbook Guestbook
+	result := db.First(&guestbook, guestbookID)
+	if result.Error != nil {
+		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	var parentMessage Message
+	result = db.First(&parentMessage, messageID)
+	if result.Error != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	// Ensure the parent message belongs to the same guestbook
+	if parentMessage.GuestbookID != guestbook.ID {
+		http.Error(w, "Message does not belong to this guestbook", http.StatusBadRequest)
+		return
+	}
+
+	// Don't allow replies to replies (only one level deep)
+	if parentMessage.ParentMessageID != nil {
+		http.Error(w, "Cannot reply to a reply", http.StatusBadRequest)
+		return
+	}
+
+	if len(replyText) > constants.MAX_MESSAGE_LENGTH {
+		http.Error(w, "Reply is too long, maximum length is "+fmt.Sprint(constants.MAX_MESSAGE_LENGTH)+" characters", http.StatusBadRequest)
+		return
+	}
+
+	parentMessageID := parentMessage.ID
+	replyMessage := Message{
+		Name:            currentUser.Username,
+		Text:            replyText,
+		Website:         nil,
+		GuestbookID:     guestbook.ID,
+		Approved:        true,
+		ParentMessageID: &parentMessageID,
+	}
+
+	result = db.Create(&replyMessage)
+	if result.Error != nil {
+		http.Error(w, "Error creating reply", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("admin=%d username=%q ip=%s action=reply_to_message guestbook_id=%d parent_message_id=%d reply_message_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, parentMessage.ID, replyMessage.ID)
+
+	// Invalidate cache for this guestbook since a reply was added
 	messageCache.InvalidateGuestbook(guestbook.ID)
 
 	http.Redirect(w, r, "/admin/guestbook/"+guestbookID, http.StatusSeeOther)

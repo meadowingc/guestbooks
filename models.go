@@ -25,12 +25,14 @@ type Guestbook struct {
 // Message represents a guestbook message
 type Message struct {
 	gorm.Model
-	Name        string
-	Text        string
-	Website     *string
-	Approved    bool
-	GuestbookID uint      `gorm:"index"`
-	Guestbook   Guestbook `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Name            string
+	Text            string
+	Website         *string
+	Approved        bool
+	GuestbookID     uint      `gorm:"index"`
+	Guestbook       Guestbook `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	ParentMessageID *uint     `gorm:"index"`
+	Replies         []Message `gorm:"foreignKey:ParentMessageID"`
 }
 
 // AdminUser represents an admin user with access to the admin panel

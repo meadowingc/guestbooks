@@ -147,3 +147,18 @@ footer {
 .button-link:hover {
   text-decoration: wavy underline;
 }
+
+/* Reply styling */
+.guestbook-message-reply {
+  margin-left: 2.5rem;
+  padding-left: 1rem;
+  border-left: 3px solid var(--link-color);
+  opacity: 0.95;
+}
+
+.guestbook-message-reply blockquote {
+  margin: 0;
+  padding-left: 0;
+  border-left: none;
+}
+

@@ -191,6 +191,7 @@ func initRouter() *chi.Mux {
 				r.Get("/edit", AdminEditMessage)
 				r.Post("/edit", AdminEditMessage)
 				r.Post("/delete", AdminDeleteMessage)
+				r.Post("/reply", AdminReplyToMessage)
 			})
 		})
 	})
@@ -269,8 +270,9 @@ func initRouter() *chi.Mux {
 
 				// v1 API - return all messages at top level of response, without pagination (backward compatibility)
 				var messages []Message
-				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).
+				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true, ParentMessageID: nil}).
 					Order("created_at DESC").
+					Preload("Replies", "approved = ?", true).
 					Find(&messages)
 				if result.Error != nil {
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -335,8 +337,9 @@ func initRouter() *chi.Mux {
 				}
 
 				var messages []Message
-				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).
+				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true, ParentMessageID: nil}).
 					Order("created_at DESC").
+					Preload("Replies", "approved = ?", true).
 					Limit(limit).
 					Offset(offset).
 					Find(&messages)

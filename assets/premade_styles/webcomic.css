@@ -77,6 +77,21 @@ hr {
   margin: 1em 0;
 }
 
+/* Reply styling */
+.guestbook-message-reply {
+  margin-left: 2.5rem;
+  padding-left: 1rem;
+  border-left: 3px solid #b4dcb4;
+  opacity: 0.95;
+}
+
+
+.guestbook-message-reply blockquote {
+  margin: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
 @media (max-width: 1200px) {
   main {
     width: 85%;

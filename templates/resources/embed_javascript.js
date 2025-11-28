@@ -106,6 +106,11 @@
 
           // Messages are already sorted by created_at DESC from the API
           messages.forEach(function (message) {
+            // ignore messages that are replies (ParentMessageID not null)
+            if (message.ParentMessageID) {
+              return;
+            }
+
             var messageContainer = document.createElement("div");
             messageContainer.className = "guestbook-message";
 
@@ -124,6 +129,7 @@
               var textNode = document.createTextNode(message.Name);
               boldElement.appendChild(textNode);
             }
+
             messageHeader.appendChild(boldElement);
 
             // add date
@@ -146,6 +152,41 @@
             messageContainer.appendChild(messageBody);
 
             messagesContainer.appendChild(messageContainer);
+
+            // Add replies if they exist
+            if (message.Replies && message.Replies.length > 0) {
+              message.Replies.forEach(function(reply) {
+                var replyContainer = document.createElement("div");
+                replyContainer.className = "guestbook-message guestbook-message-reply";
+
+                var replyHeader = document.createElement("p");
+                var replyBoldElement = document.createElement("b");
+                var replyTextNode = document.createTextNode(reply.Name);
+                replyBoldElement.appendChild(replyTextNode);
+                replyHeader.appendChild(replyBoldElement);
+
+                // add reply date
+                var replyCreatedAt = new Date(reply.CreatedAt);
+                var replyFormattedDate = replyCreatedAt.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                });
+
+                var replyDateElement = document.createElement("small");
+                replyDateElement.textContent = " - " + replyFormattedDate;
+                replyHeader.appendChild(replyDateElement);
+
+                // add reply text
+                var replyBody = document.createElement("blockquote");
+                replyBody.textContent = reply.Text;
+
+                replyContainer.appendChild(replyHeader);
+                replyContainer.appendChild(replyBody);
+
+                messagesContainer.appendChild(replyContainer);
+              });
+            }
           });
         }
 

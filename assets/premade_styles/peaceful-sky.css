@@ -115,6 +115,20 @@ small {
   font-size: 10px;
 }
 
+/* Reply styling */
+.guestbook-message-reply {
+  margin-left: 2.5rem;
+  padding-left: 1rem;
+  border-left: 3px solid #1894ca;
+  opacity: 0.95;
+}
+
+.guestbook-message-reply blockquote {
+  margin: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
 @media (max-width: 950px) {
   .container {
     font-size: 16px;

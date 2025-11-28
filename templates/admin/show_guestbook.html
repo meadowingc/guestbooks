@@ -54,19 +54,20 @@
                         <div style="display: flex; align-items: center; gap: 0.75rem;">
                             <input type="checkbox" class="message-checkbox" data-message-id="{{.ID}}" style="cursor: pointer;">
                             <div>
-                            {{if .Website}}
-                            <strong><a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a></strong>
-                            {{else}}
-                            <strong>{{.Name}}</strong>
-                            {{end}}
-                            {{if .Approved}}
-                            <span class="badge badge-success">Approved</span>
-                            {{else}}
-                            <span class="badge badge-warning">Pending</span>
-                            {{end}}
+                                {{if .Website}}
+                                <strong><a href="{{.Website}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a></strong>
+                                {{else}}
+                                <strong>{{.Name}}</strong>
+                                {{end}}
+                                {{if .Approved}}
+                                <span class="badge badge-success">Approved</span>
+                                {{else}}
+                                <span class="badge badge-warning">Pending</span>
+                                {{end}}
                             </div>
                         </div>
                         <div class="action-group">
+                            <button type="button" class="btn btn-outline btn-sm reply-btn" data-message-id="{{.ID}}" data-message-name="{{.Name}}">Reply</button>
                             <a href="/admin/guestbook/{{$.Data.ID}}/message/{{.ID}}/edit" class="btn btn-outline btn-sm">Edit</a>
                             <form action="/admin/guestbook/{{$.Data.ID}}/message/{{.ID}}/delete" method="post" style="display: inline; margin: 0;">
                                 <button type="submit" class="btn btn-danger btn-sm" 
@@ -77,6 +78,31 @@
                         </div>
                     </div>
                     <p style="margin: 0; color: var(--gray-700);">{{.Text}}</p>
+
+                    {{if .Replies}}
+                    <div style="margin-top: 1rem; margin-left: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                        {{range .Replies}}
+                        <div style="padding: 0.75rem; background: var(--gray-100); border-radius: var(--border-radius); border-left: 3px solid var(--primary-color);">
+                            <div class="flex-between mb-2">
+                                <div>
+                                    <strong>{{.Name}}</strong>
+                                    <span class="badge" style="background: var(--primary-color); color: white;">Reply</span>
+                                </div>
+                                <div class="action-group">
+                                    <a href="/admin/guestbook/{{$.Data.ID}}/message/{{.ID}}/edit" class="btn btn-outline btn-sm">Edit</a>
+                                    <form action="/admin/guestbook/{{$.Data.ID}}/message/{{.ID}}/delete" method="post" style="display: inline; margin: 0;">
+                                        <button type="submit" class="btn btn-danger btn-sm" 
+                                            onclick="return confirm('Are you sure you want to delete this reply?');">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            <p style="margin: 0; color: var(--gray-700);">{{.Text}}</p>
+                        </div>
+                        {{end}}
+                    </div>
+                    {{end}}
                 </div>
                 {{end}}
             </div>
@@ -92,4 +118,64 @@
         </div>
     </div>
 </div>
+
+<!-- Reply Modal -->
+<div id="reply-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 2rem; border-radius: var(--border-radius); max-width: 600px; width: 90%;">
+        <h3 style="margin-top: 0;">Reply to <span id="reply-to-name"></span></h3>
+        <form id="reply-form" method="post">
+            <div style="margin-bottom: 1rem;">
+                <label for="reply-text">Your Reply:</label>
+                <textarea id="reply-text" name="text" rows="5" style="width: 100%; box-sizing: border-box;" required></textarea>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" id="cancel-reply" class="btn btn-outline">Cancel</button>
+                <button type="submit" class="btn btn-primary">Send Reply</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    const modal = document.getElementById('reply-modal');
+    const form = document.getElementById('reply-form');
+    const replyText = document.getElementById('reply-text');
+    const replyToName = document.getElementById('reply-to-name');
+    const cancelBtn = document.getElementById('cancel-reply');
+
+    // Handle reply button clicks
+    document.querySelectorAll('.reply-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const messageId = this.dataset.messageId;
+            const messageName = this.dataset.messageName;
+            
+            replyToName.textContent = messageName;
+            form.action = '/admin/guestbook/{{.Data.ID}}/message/' + messageId + '/reply';
+            replyText.value = '';
+            
+            modal.style.display = 'flex';
+        });
+    });
+
+    // Handle cancel
+    cancelBtn.addEventListener('click', function() {
+        modal.style.display = 'none';
+    });
+
+    // Handle clicking outside modal
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Handle Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.style.display === 'flex') {
+            modal.style.display = 'none';
+        }
+    });
+})();
+</script>
 {{end}}
