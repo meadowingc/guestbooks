@@ -71,6 +71,9 @@ func SendMail(recepients []string, subject, body string) error {
 		}
 
 		return err
+	} else if mailerToUse == "none" {
+		log.Println("INFO: Mailer is disabled")
+		return nil
 	} else {
 		log.Fatalf("Unknown mailer config: %s\n", mailerToUse)
 		panic("unknown mailer config")
