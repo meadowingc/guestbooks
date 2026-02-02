@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"guestbook/constants"
 	"log"
+	"net/mail"
 
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
@@ -52,6 +53,12 @@ func SendMail(recepients []string, subject, body string) error {
 		username := viper.GetString("mailer.smtp.username")
 		password := viper.GetString("mailer.smtp.password")
 
+		// Extract raw email address for SMTP envelope (handles both "Name <email>" and plain email formats)
+		envelopeFrom := from
+		if addr, err := mail.ParseAddress(from); err == nil {
+			envelopeFrom = addr.Address
+		}
+
 		auth := sasl.NewLoginClient(username, password)
 
 		var err error
@@ -64,7 +71,7 @@ func SendMail(recepients []string, subject, body string) error {
 			to := []string{recipient}
 			msg := []byte(message)
 			reader := bytes.NewReader(msg)
-			err = smtp.SendMail(host+":"+port, auth, from, to, reader)
+			err = smtp.SendMail(host+":"+port, auth, envelopeFrom, to, reader)
 			if err != nil {
 				log.Printf("WARN: Failed to send email: %v\n", err)
 			}
