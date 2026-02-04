@@ -666,8 +666,6 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("admin=%d username=%q ip=%s action=reply_to_message guestbook_id=%d parent_message_id=%d reply_message_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, parentMessage.ID, replyMessage.ID)
-
 	// Invalidate cache for this guestbook since a reply was added
 	messageCache.InvalidateGuestbook(guestbook.ID)
 
