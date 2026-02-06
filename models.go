@@ -39,6 +39,7 @@ type Message struct {
 type AdminUser struct {
 	gorm.Model
 	Username               string         `gorm:"uniqueIndex"`
+	DisplayName            string         `gorm:""`
 	PasswordHash           datatypes.JSON `gorm:"type:json"`
 	SessionToken           string         `gorm:"index;unique"`
 	Email                  string         `gorm:""`
@@ -48,4 +49,12 @@ type AdminUser struct {
 	PasswordResetExpiry    int64          `gorm:""`
 	EmailNotifications     bool           `gorm:""`
 	Guestbooks             []Guestbook    `gorm:"foreignKey:AdminUserID"`
+}
+
+// ReplyName returns the display name if set, otherwise the username.
+func (u *AdminUser) ReplyName() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Username
 }

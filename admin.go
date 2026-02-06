@@ -652,7 +652,7 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 
 	parentMessageID := parentMessage.ID
 	replyMessage := Message{
-		Name:            currentUser.Username,
+		Name:            currentUser.ReplyName(),
 		Text:            replyText,
 		Website:         nil,
 		GuestbookID:     guestbook.ID,
@@ -759,11 +759,13 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		email := strings.TrimSpace(r.FormValue("email"))
 		notify := r.FormValue("notify") == "on"
+		displayName := strings.TrimSpace(r.FormValue("display_name"))
 
 		hasChangedEmail := currentUser.Email != email
 
 		currentUser.Email = email
 		currentUser.EmailNotifications = notify
+		currentUser.DisplayName = displayName
 
 		if hasChangedEmail {
 			newToken, err := generateAuthToken()
@@ -782,6 +784,20 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 		if result.Error != nil {
 			http.Error(w, "Error updating user settings", http.StatusInternalServerError)
 			return
+		}
+
+		// Update all existing replies by this user to use the new display name
+		newReplyName := currentUser.ReplyName()
+		db.Model(&Message{}).
+			Where("parent_message_id IS NOT NULL AND guestbook_id IN (?)",
+				db.Model(&Guestbook{}).Select("id").Where("admin_user_id = ?", currentUser.ID)).
+			Update("name", newReplyName)
+
+		// Invalidate cache for all guestbooks owned by this user
+		var userGuestbooks []Guestbook
+		db.Where("admin_user_id = ?", currentUser.ID).Find(&userGuestbooks)
+		for _, g := range userGuestbooks {
+			messageCache.InvalidateGuestbook(g.ID)
 		}
 
 		http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)

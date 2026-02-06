@@ -7,6 +7,29 @@
     <h1>User Settings</h1>
     
     <div class="form-section">
+        <h4>Display Name</h4>
+        <p class="text-small text-muted">
+            This name will be shown on your replies to guestbook messages instead of your username.
+            Leave blank to use your username ({{ .Data.Username }}).
+        </p>
+        
+        <form method="post" action="/admin/settings">
+            <div class="form-group">
+                <label for="display_name">Display Name</label>
+                <input type="text" id="display_name" name="display_name" 
+                    placeholder="{{ .Data.Username }}"
+                    value="{{ .Data.DisplayName }}">
+            </div>
+
+            <!-- Preserve current email & notification settings when submitting this form -->
+            <input type="hidden" name="email" value="{{ .Data.Email }}">
+            {{ if .Data.EmailNotifications }}<input type="hidden" name="notify" value="on">{{ end }}
+            
+            <button type="submit" class="btn btn-primary">Update Display Name</button>
+        </form>
+    </div>
+
+    <div class="form-section">
         <h4>Email & Notifications</h4>
         <p class="text-small text-muted">
             Configure your email to receive notifications when visitors leave messages on your guestbooks. 
@@ -31,6 +54,9 @@
                     Get notified instantly when someone leaves a message on your guestbooks
                 </div>
             </div>
+
+            <!-- Preserve display name when submitting this form -->
+            <input type="hidden" name="display_name" value="{{ .Data.DisplayName }}">
             
             <button type="submit" class="btn btn-primary">Update Settings</button>
         </form>

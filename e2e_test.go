@@ -1255,3 +1255,168 @@ func TestReplyToNonExistentMessage(t *testing.T) {
 
 	t.Log("Non-existent message reply test passed!")
 }
+
+// TestDisplayNameOnReplies tests that the display name setting controls the name shown on replies,
+// and that changing it retroactively updates all existing replies.
+func TestDisplayNameOnReplies(t *testing.T) {
+	// Use incognito mode to avoid session conflicts
+	page := browser.MustIncognito().MustPage(testBaseURL)
+	defer page.MustClose()
+
+	username := fmt.Sprintf("displayname_%d", time.Now().Unix())
+	password := "testpassword123"
+
+	// Step 1: Sign up
+	t.Log("Step 1: Creating admin account")
+	page.MustNavigate(testBaseURL + "/admin/signup")
+	page.MustWaitLoad()
+	page.MustElement("input[name='username']").MustInput(username)
+	page.MustElement("input[name='password']").MustInput(password)
+	page.MustElement("input[type='checkbox']").MustClick()
+	page.MustElement("form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	page.MustWaitStable()
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 2: Create a guestbook
+	t.Log("Step 2: Creating guestbook")
+	page.MustNavigate(testBaseURL + "/admin/guestbook/new")
+	page.MustWaitLoad()
+	page.MustElement("input[name='websiteURL']").MustInput("https://displaynametest.com")
+	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	guestbookLink := page.MustElement("a[href*='/admin/guestbook/']:not([href*='/new'])").MustProperty("href").String()
+	var guestbookID string
+	fmt.Sscanf(guestbookLink, testBaseURL+"/admin/guestbook/%s", &guestbookID)
+
+	// Step 3: Create a visitor message
+	t.Log("Step 3: Creating visitor message")
+	var guestbook Guestbook
+	db.First(&guestbook, guestbookID)
+
+	visitorMsg := Message{
+		Name:        "A Visitor",
+		Text:        "Hello from a visitor!",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&visitorMsg)
+
+	// Step 4: Reply to the message (should use username since no display name is set)
+	t.Log("Step 4: Replying before setting display name")
+	page.MustNavigate(testBaseURL + "/admin/guestbook/" + guestbookID)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	page.MustElement(".reply-btn").MustClick()
+	time.Sleep(300 * time.Millisecond)
+	page.MustElement("#reply-text").MustInput("Reply before display name")
+	page.MustElement("#reply-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify reply uses the username
+	var firstReply Message
+	db.Where("parent_message_id = ? AND text = ?", visitorMsg.ID, "Reply before display name").First(&firstReply)
+	if firstReply.Name != username {
+		t.Errorf("Reply without display name should use username '%s', got '%s'", username, firstReply.Name)
+	}
+
+	// Step 5: Set a display name
+	t.Log("Step 5: Setting display name")
+	displayName := "Friendly Admin"
+	page.MustNavigate(testBaseURL + "/admin/settings")
+	page.MustWaitLoad()
+	time.Sleep(300 * time.Millisecond)
+
+	page.MustElement("input[name='display_name']").MustInput(displayName)
+	// Submit the display name form (first form on the page)
+	page.MustElements("form button[type='submit']")[0].MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Step 6: Verify the display name was saved
+	t.Log("Step 6: Verifying display name was saved")
+	var updatedUser AdminUser
+	db.Where("username = ?", username).First(&updatedUser)
+	if updatedUser.DisplayName != displayName {
+		t.Errorf("Display name should be '%s', got '%s'", displayName, updatedUser.DisplayName)
+	}
+
+	// Step 7: Verify the old reply was retroactively updated
+	t.Log("Step 7: Verifying old reply was retroactively updated")
+	var updatedReply Message
+	db.First(&updatedReply, firstReply.ID)
+	if updatedReply.Name != displayName {
+		t.Errorf("Old reply name should have been updated to '%s', got '%s'", displayName, updatedReply.Name)
+	}
+
+	// Step 8: Create another visitor message and reply (should use display name)
+	t.Log("Step 8: Replying after setting display name")
+	visitorMsg2 := Message{
+		Name:        "Another Visitor",
+		Text:        "Second visitor message!",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	db.Create(&visitorMsg2)
+
+	page.MustNavigate(testBaseURL + "/admin/guestbook/" + guestbookID)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Find the reply button for the new message (it should be the first one since messages are in reverse order)
+	replyBtns := page.MustElements(".reply-btn")
+	replyBtns[0].MustClick()
+	time.Sleep(300 * time.Millisecond)
+	page.MustElement("#reply-text").MustInput("Reply after display name")
+	page.MustElement("#reply-form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify the new reply uses the display name
+	var secondReply Message
+	db.Where("parent_message_id = ? AND text = ?", visitorMsg2.ID, "Reply after display name").First(&secondReply)
+	if secondReply.Name != displayName {
+		t.Errorf("New reply should use display name '%s', got '%s'", displayName, secondReply.Name)
+	}
+
+	// Step 9: Verify public page shows the display name on both replies
+	t.Log("Step 9: Verifying public page shows display name")
+	publicURL := testBaseURL + "/guestbook/" + guestbookID
+	page.MustNavigate(publicURL)
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	pageText := page.MustElement("body").MustText()
+	if strings.Contains(pageText, username) {
+		t.Errorf("Public page should not show username '%s' — display name should be used instead", username)
+	}
+	if !strings.Contains(pageText, displayName) {
+		t.Errorf("Public page should show display name '%s'", displayName)
+	}
+
+	// Step 10: Clear the display name and verify it falls back to username
+	t.Log("Step 10: Clearing display name to test fallback")
+	page.MustNavigate(testBaseURL + "/admin/settings")
+	page.MustWaitLoad()
+	time.Sleep(300 * time.Millisecond)
+
+	dnInput := page.MustElement("input[name='display_name']")
+	dnInput.MustSelectAllText()
+	dnInput.MustInput("")
+	page.MustElements("form button[type='submit']")[0].MustClick()
+	page.MustWaitLoad()
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify old replies were updated back to username
+	var revertedReply Message
+	db.First(&revertedReply, firstReply.ID)
+	if revertedReply.Name != username {
+		t.Errorf("After clearing display name, old reply should revert to username '%s', got '%s'", username, revertedReply.Name)
+	}
+
+	t.Log("Display name test passed!")
+}
