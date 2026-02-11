@@ -260,6 +260,16 @@ func initRouter() *chi.Mux {
 					log.Fatal(err)
 				}
 
+				// Enforce allowed origins
+				var allowedOrigins string
+				db.Model(&Guestbook{}).Select("allowed_origins").Where("id = ?", guestbookIDUint).Scan(&allowedOrigins)
+				matchedOrigin, originAllowed := checkOriginAllowed(r, allowedOrigins)
+				if !originAllowed {
+					http.Error(w, "Origin not allowed", http.StatusForbidden)
+					return
+				}
+				setOriginHeaders(w, allowedOrigins, matchedOrigin, false)
+
 				// Try to get from cache first
 				if cachedMessages, ok := messageCache.GetMessages(uint(guestbookIDUint)); ok {
 					w.Header().Set("Content-Type", "application/json")
@@ -295,6 +305,16 @@ func initRouter() *chi.Mux {
 				if err != nil {
 					log.Fatal(err)
 				}
+
+				// Enforce allowed origins
+				var allowedOrigins string
+				db.Model(&Guestbook{}).Select("allowed_origins").Where("id = ?", guestbookIDUint).Scan(&allowedOrigins)
+				matchedOrigin, originAllowed := checkOriginAllowed(r, allowedOrigins)
+				if !originAllowed {
+					http.Error(w, "Origin not allowed", http.StatusForbidden)
+					return
+				}
+				setOriginHeaders(w, allowedOrigins, matchedOrigin, false)
 
 				pageStr := r.URL.Query().Get("page")
 				limitStr := r.URL.Query().Get("limit")

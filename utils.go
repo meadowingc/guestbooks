@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"guestbook/constants"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -126,4 +128,118 @@ func CompareCSSWithThemes(submittedCSS string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// parseAllowedOrigins splits a comma-separated AllowedOrigins string into
+// a cleaned slice of origin strings. Returns nil if the input is empty.
+func parseAllowedOrigins(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	var origins []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.TrimRight(p, "/")
+		if p != "" {
+			origins = append(origins, strings.ToLower(p))
+		}
+	}
+	return origins
+}
+
+// validateOrigins validates a raw comma-separated origins string. Each entry
+// must be a valid URL with a scheme (http or https) and a host, and no path.
+// Returns the cleaned, normalised string and an error if any entry is invalid.
+func validateOrigins(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	parts := strings.Split(raw, ",")
+	var cleaned []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		p = strings.TrimRight(p, "/")
+		if p == "" {
+			continue
+		}
+		u, err := url.Parse(p)
+		if err != nil {
+			return "", fmt.Errorf("invalid origin %q: %v", p, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return "", fmt.Errorf("invalid origin %q: scheme must be http or https", p)
+		}
+		if u.Host == "" {
+			return "", fmt.Errorf("invalid origin %q: missing host", p)
+		}
+		if u.Path != "" && u.Path != "/" {
+			return "", fmt.Errorf("invalid origin %q: must not contain a path", p)
+		}
+		cleaned = append(cleaned, strings.ToLower(u.Scheme+"://"+u.Host))
+	}
+	return strings.Join(cleaned, ","), nil
+}
+
+// originFromRequest extracts the origin from the request's Origin header,
+// falling back to deriving it from the Referer header. Returns empty string
+// if neither is present.
+func originFromRequest(r *http.Request) string {
+	origin := r.Header.Get("Origin")
+	if origin != "" && origin != "null" {
+		return strings.ToLower(strings.TrimRight(origin, "/"))
+	}
+	ref := r.Header.Get("Referer")
+	if ref != "" {
+		if u, err := url.Parse(ref); err == nil && u.Host != "" {
+			return strings.ToLower(u.Scheme + "://" + u.Host)
+		}
+	}
+	return ""
+}
+
+// checkOriginAllowed checks whether the request origin is allowed for a
+// guestbook with the given AllowedOrigins value. If allowedOrigins is empty,
+// all origins are allowed and ("*", true) is returned. Otherwise the request
+// origin is matched against the list and (matchedOrigin, true) or ("", false)
+// is returned.
+func checkOriginAllowed(r *http.Request, allowedOrigins string) (matchedOrigin string, allowed bool) {
+	origins := parseAllowedOrigins(allowedOrigins)
+	if len(origins) == 0 {
+		return "*", true
+	}
+
+	reqOrigin := originFromRequest(r)
+	if reqOrigin == "" {
+		// No origin header — direct browser navigation, curl, etc. Allow it.
+		return "", true
+	}
+
+	for _, o := range origins {
+		if reqOrigin == o {
+			return o, true
+		}
+	}
+	return "", false
+}
+
+// setOriginHeaders sets CORS and CSP headers on the response based on the
+// guestbook's AllowedOrigins setting. If isPage is true, a
+// Content-Security-Policy frame-ancestors directive is also set.
+func setOriginHeaders(w http.ResponseWriter, allowedOrigins string, matchedOrigin string, isPage bool) {
+	origins := parseAllowedOrigins(allowedOrigins)
+
+	if len(origins) > 0 {
+		// Override the global CORS wildcard with the specific matched origin.
+		if matchedOrigin != "" && matchedOrigin != "*" {
+			w.Header().Set("Access-Control-Allow-Origin", matchedOrigin)
+			w.Header().Set("Vary", "Origin")
+		}
+		if isPage {
+			// frame-ancestors restricts which sites can embed this page in an iframe.
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'self' "+strings.Join(origins, " "))
+		}
+	}
 }

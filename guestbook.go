@@ -37,13 +37,14 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 
 	type GuestbookPageData struct {
-		WebsiteURL    string
-		CustomPageCSS string
+		WebsiteURL     string
+		CustomPageCSS  string
+		AllowedOrigins string
 	}
 
 	var guestbookData GuestbookPageData
 	result := db.Model(&Guestbook{}).
-		Select("website_url, custom_page_css").
+		Select("website_url, custom_page_css, allowed_origins").
 		Where("id = ?", guestbookID).
 		Scan(&guestbookData)
 
@@ -56,6 +57,14 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Guestbook not found. It may have been deleted or the URL is incorrect.", http.StatusNotFound)
 		return
 	}
+
+	// Enforce allowed origins (sets frame-ancestors CSP header for iframe restriction)
+	matchedOrigin, allowed := checkOriginAllowed(r, guestbookData.AllowedOrigins)
+	if !allowed {
+		http.Error(w, "Origin not allowed", http.StatusForbidden)
+		return
+	}
+	setOriginHeaders(w, guestbookData.AllowedOrigins, matchedOrigin, true)
 
 	if constants.DEBUG_MODE {
 		guestbookTemplate = loadGuestbookTemplate()
@@ -94,6 +103,14 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
 		return
 	}
+
+	// Enforce allowed origins
+	matchedOrigin, allowed := checkOriginAllowed(r, guestbook.AllowedOrigins)
+	if !allowed {
+		http.Error(w, "Origin not allowed", http.StatusForbidden)
+		return
+	}
+	setOriginHeaders(w, guestbook.AllowedOrigins, matchedOrigin, false)
 
 	// check that the form has the expected challenge if necesary
 	if strings.TrimSpace(guestbook.ChallengeQuestion) != "" {

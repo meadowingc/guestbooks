@@ -17,6 +17,8 @@ type Guestbook struct {
 	ChallengeHint          string
 	ChallengeFailedMessage string
 
+	AllowedOrigins string // Comma-separated list of allowed origins (e.g. "https://xyz.com,https://example.org"). Empty means allow all.
+
 	CustomPageCSS string `gorm:"type:text"`
 
 	Messages []Message

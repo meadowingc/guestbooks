@@ -292,6 +292,13 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		challengeAnswer := r.FormValue("challengeAnswer")
 		requiresApproval := r.FormValue("requiresApproval") == "on"
 		customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
+		allowedOriginsRaw := r.FormValue("allowedOrigins")
+
+		allowedOrigins, originsErr := validateOrigins(allowedOriginsRaw)
+		if originsErr != nil {
+			http.Error(w, "Invalid allowed origins: "+originsErr.Error(), http.StatusBadRequest)
+			return
+		}
 
 		isCssValid, errorMsg := validateCSS(customPageCSS)
 		if !isCssValid {
@@ -317,6 +324,7 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 			ChallengeHint:          challengeHint,
 			ChallengeFailedMessage: challengeFailedMessage,
 			ChallengeAnswer:        challengeAnswer,
+			AllowedOrigins:         allowedOrigins,
 			CustomPageCSS:          customPageCSS,
 			AdminUserID:            adminUser.ID,
 		}
@@ -436,6 +444,13 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	challengeAnswer := r.FormValue("challengeAnswer")
 	requiresApproval := r.FormValue("requiresApproval") == "on"
 	customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
+	allowedOriginsRaw := r.FormValue("allowedOrigins")
+
+	allowedOrigins, originsErr := validateOrigins(allowedOriginsRaw)
+	if originsErr != nil {
+		http.Error(w, "Invalid allowed origins: "+originsErr.Error(), http.StatusBadRequest)
+		return
+	}
 
 	isCssValid, errorMsg := validateCSS(customPageCSS)
 	if !isCssValid {
@@ -473,6 +488,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbook.ChallengeHint = challengeHint
 	guestbook.ChallengeFailedMessage = challengeFailedMessage
 	guestbook.ChallengeAnswer = challengeAnswer
+	guestbook.AllowedOrigins = allowedOrigins
 	guestbook.CustomPageCSS = customPageCSS
 
 	result = db.Save(&guestbook)
