@@ -291,6 +291,7 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		challengeFailedMessage := r.FormValue("challengeFailedMessage")
 		challengeAnswer := r.FormValue("challengeAnswer")
 		requiresApproval := r.FormValue("requiresApproval") == "on"
+		powEnabled := r.FormValue("powEnabled") == "on"
 		customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
 
 		isCssValid, errorMsg := validateCSS(customPageCSS)
@@ -313,6 +314,7 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		newGuestbook := Guestbook{
 			WebsiteURL:             websiteURL,
 			RequiresApproval:       requiresApproval,
+			PowEnabled:             powEnabled,
 			ChallengeQuestion:      challengeQuestion,
 			ChallengeHint:          challengeHint,
 			ChallengeFailedMessage: challengeFailedMessage,
@@ -435,6 +437,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	challengeFailedMessage := r.FormValue("challengeFailedMessage")
 	challengeAnswer := r.FormValue("challengeAnswer")
 	requiresApproval := r.FormValue("requiresApproval") == "on"
+	powEnabled := r.FormValue("powEnabled") == "on"
 	customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
 
 	isCssValid, errorMsg := validateCSS(customPageCSS)
@@ -469,6 +472,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 
 	guestbook.WebsiteURL = websiteURL
 	guestbook.RequiresApproval = requiresApproval
+	guestbook.PowEnabled = powEnabled
 	guestbook.ChallengeQuestion = challengeQuestion
 	guestbook.ChallengeHint = challengeHint
 	guestbook.ChallengeFailedMessage = challengeFailedMessage

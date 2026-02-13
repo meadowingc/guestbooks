@@ -41,6 +41,10 @@ func main() {
 	initDatabase()
 	initCache()
 
+	// Initialize proof-of-work challenge store and start cleanup loop
+	powChallengeStore = NewChallengeStore()
+	powChallengeStore.StartCleanupLoop()
+
 	// Setup a channel to listen for termination signals
 	signals := make(chan os.Signal, 1)
 	// Notify signals channel on SIGINT and SIGTERM
@@ -250,6 +254,8 @@ func initRouter() *chi.Mux {
 			})
 		})
 	})
+
+	r.Get("/api/pow-challenge/{guestbookID}", PowChallengeHandler)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/v1", func(r chi.Router) {

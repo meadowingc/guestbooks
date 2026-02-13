@@ -109,6 +109,16 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Verify proof-of-work if enabled for this guestbook
+	if guestbook.PowEnabled {
+		powChallenge := strings.TrimSpace(r.FormValue("powChallenge"))
+		powNonce := strings.TrimSpace(r.FormValue("powNonce"))
+		if powChallenge == "" || powNonce == "" || !powChallengeStore.VerifyPow(powChallenge, powNonce, guestbook.ID) {
+			http.Error(w, "Proof of work verification failed. Please reload the page and try again.", http.StatusForbidden)
+			return
+		}
+	}
+
 	name := strings.TrimSpace(r.FormValue("name"))
 	text := strings.TrimSpace(r.FormValue("text"))
 	redirectToUrl := strings.TrimSpace(r.FormValue("redirect_to_url"))

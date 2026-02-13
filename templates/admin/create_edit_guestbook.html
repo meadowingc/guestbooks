@@ -46,6 +46,22 @@
 
         <div class="form-section">
             <h4>Anti-Bot Verification</h4>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="powEnabled" name="powEnabled" 
+                        {{if and $isEditing .Data.PowEnabled}}checked{{end}}>
+                    <span>Enable Proof of Work challenge</span>
+                </label>
+                <div class="form-hint">
+                    When enabled, visitors must check a verification checkbox before submitting a message.
+                    Their browser then solves a small computational puzzle in the background.
+                    This deters automated spam bots with minimal friction. Takes a few seconds on a normal device.
+                </div>
+            </div>
+
+            <hr style="margin: 1em 0;">
+
             <p class="text-small text-muted">
                 Set up a challenge question to prevent automated spam. Visitors will need to answer this question 
                 correctly to submit a message. For example: "What is my name?" or "Does water boil at 100°C?"

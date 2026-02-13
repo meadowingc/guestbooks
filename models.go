@@ -11,6 +11,7 @@ type Guestbook struct {
 	WebsiteURL       string
 	AdminUserID      uint `gorm:"index"`
 	RequiresApproval bool `gorm:"default:false"`
+	PowEnabled       bool `gorm:"default:false"`
 
 	ChallengeQuestion      string
 	ChallengeAnswer        string

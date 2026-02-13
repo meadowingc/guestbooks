@@ -7,4 +7,9 @@ const (
 	MAX_MESSAGE_LENGTH   = 2500
 	BUILT_IN_THEMES_DIR  = "assets/premade_styles"
 	MAX_CSS_LENGTH       = 10_000
+
+	// Proof of Work: number of leading zero bits required in SHA-256(challenge + nonce).
+	POW_DIFFICULTY = 19
+	// How long a PoW challenge remains valid.
+	POW_CHALLENGE_TTL_MINUTES = 10
 )
