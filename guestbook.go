@@ -39,11 +39,12 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	type GuestbookPageData struct {
 		WebsiteURL    string
 		CustomPageCSS string
+		PowEnabled    bool
 	}
 
 	var guestbookData GuestbookPageData
 	result := db.Model(&Guestbook{}).
-		Select("website_url, custom_page_css").
+		Select("website_url, custom_page_css, pow_enabled").
 		Where("id = ?", guestbookID).
 		Scan(&guestbookData)
 
@@ -72,11 +73,13 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		WebsiteURL           string
 		CustomPageCSS        template.CSS
 		SelectedBuiltInTheme string
+		PowEnabled           bool
 	}{
 		ID:                   guestbookID,
 		WebsiteURL:           guestbookData.WebsiteURL,
 		CustomPageCSS:        template.CSS(guestbookData.CustomPageCSS),
 		SelectedBuiltInTheme: selectedBuiltInTheme,
+		PowEnabled:           guestbookData.PowEnabled,
 	}
 
 	err := guestbookTemplate.Execute(w, data)

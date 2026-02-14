@@ -85,11 +85,48 @@ hr {
   opacity: 0.95;
 }
 
-
 .guestbook-message-reply blockquote {
   margin: 0;
   padding-left: 0;
   border-left: none;
+}
+
+/* Proof of Work bot deterrent */
+.guestbooks___pow-container {
+  margin: 0.75em 0;
+}
+
+.guestbooks___pow-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.95em;
+  color: white;
+}
+
+.guestbooks___pow-checkbox-label input[type="checkbox"] {
+  width: 1.1em;
+  height: 1.1em;
+  cursor: pointer;
+}
+
+.guestbooks___pow-label-text--loading {
+  opacity: 0.7;
+}
+
+.guestbooks___pow-label-text--verified {
+  color: #b4dcb4;
+}
+
+.guestbooks___pow-label-text--error {
+  color: #ff6b6b;
+}
+
+input[type="submit"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @media (max-width: 1200px) {

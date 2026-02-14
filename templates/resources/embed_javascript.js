@@ -239,19 +239,6 @@
   // ---- Proof of Work Bot Deterrent ----
   {{if .Guestbook.PowEnabled}}
   (function() {
-    // Inject default PoW styles (low specificity, easily overridable)
-    var powStyleEl = document.createElement("style");
-    powStyleEl.textContent = [
-      ".guestbooks___pow-container { margin: 0.75em 0; }",
-      ".guestbooks___pow-checkbox-label { display: inline-flex; align-items: center; gap: 0.5em; cursor: pointer; user-select: none; font-size: 0.95em; }",
-      ".guestbooks___pow-checkbox-label input[type=checkbox] { width: 1.1em; height: 1.1em; cursor: pointer; }",
-      ".guestbooks___pow-label-text--loading { opacity: 0.7; }",
-      ".guestbooks___pow-label-text--verified { color: green; }",
-      ".guestbooks___pow-label-text--error { color: red; }",
-      "#guestbooks___guestbook-form input[type=submit]:disabled, #guestbooks___guestbook-form button[type=submit]:disabled { opacity: 0.5; cursor: not-allowed; }"
-    ].join("\n");
-    document.head.appendChild(powStyleEl);
-
     var powChallenge = "";
     var powNonce = "";
     var powReady = false;
