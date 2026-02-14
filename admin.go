@@ -378,7 +378,7 @@ func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("admin=%d username=%q ip=%s action=delete_guestbook guestbook_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID)
+	log.Printf("admin=%d username=%q action=delete_guestbook guestbook_id=%d", currentUser.ID, currentUser.Username, guestbook.ID)
 
 	result = db.Delete(&guestbook, guestbookID)
 	if result.Error != nil {
@@ -593,7 +593,7 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("admin=%d username=%q ip=%s action=delete_message guestbook_id=%d message_id=%d", currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, message.ID)
+	log.Printf("admin=%d username=%q action=delete_message guestbook_id=%d message_id=%d", currentUser.ID, currentUser.Username, guestbook.ID, message.ID)
 
 	result = db.Delete(&message, messageID)
 	if result.Error != nil {
@@ -728,8 +728,8 @@ func AdminBulkDeleteMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("admin=%d username=%q ip=%s action=bulk_delete_messages guestbook_id=%d message_count=%d message_ids=%v",
-		currentUser.ID, currentUser.Username, r.RemoteAddr, guestbook.ID, len(messageIDs), messageIDs)
+	log.Printf("admin=%d username=%q action=bulk_delete_messages guestbook_id=%d message_count=%d message_ids=%v",
+		currentUser.ID, currentUser.Username, guestbook.ID, len(messageIDs), messageIDs)
 
 	// Delete messages in a transaction
 	err = db.Transaction(func(tx *gorm.DB) error {
