@@ -2,16 +2,20 @@
 """
 Manual password reset script for when email-based reset isn't working.
 
-Usage: python reset_user_password.py <user_id>
+Usage:
+    python reset_user_password.py --user-id <id>
+    python reset_user_password.py --username <username>
+    python reset_user_password.py --guestbook-id <guestbook_id>
 
 This will:
-1. Look up the user by ID
+1. Look up the user by ID, username, or guestbook ownership
 2. Generate a new random password
 3. Hash it with bcrypt and update the database
 4. Print the new password so you can send it to the user
 """
 
 import sys
+import argparse
 import sqlite3
 import secrets
 import string
@@ -30,28 +34,45 @@ def generate_random_password(length=16):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-def main(user_id):
-    if not user_id:
-        print("Usage: reset_user_password.py <user_id>")
-        sys.exit(1)
+def resolve_user(cursor, args):
+    """Resolve the user from whichever identifier was provided."""
+    if args.user_id is not None:
+        cursor.execute("SELECT id, username, email FROM admin_users WHERE id=?", (args.user_id,))
+        user = cursor.fetchone()
+        if not user:
+            print(f"Error: User with ID {args.user_id} not found")
+            sys.exit(1)
+        return user
 
-    try:
-        user_id = int(user_id)
-    except ValueError:
-        print(f"Error: user_id must be an integer, got: {user_id}")
-        sys.exit(1)
+    if args.username is not None:
+        cursor.execute("SELECT id, username, email FROM admin_users WHERE username=?", (args.username,))
+        user = cursor.fetchone()
+        if not user:
+            print(f"Error: User with username '{args.username}' not found")
+            sys.exit(1)
+        return user
 
+    if args.guestbook_id is not None:
+        cursor.execute("SELECT admin_user_id FROM guestbooks WHERE id=?", (args.guestbook_id,))
+        row = cursor.fetchone()
+        if not row:
+            print(f"Error: Guestbook with ID {args.guestbook_id} not found")
+            sys.exit(1)
+        owner_id = row[0]
+        cursor.execute("SELECT id, username, email FROM admin_users WHERE id=?", (owner_id,))
+        user = cursor.fetchone()
+        if not user:
+            print(f"Error: Owner (user ID {owner_id}) of guestbook {args.guestbook_id} not found")
+            sys.exit(1)
+        return user
+
+
+def main(args):
     conn = sqlite3.connect('guestbook.db')
     cursor = conn.cursor()
 
     # Look up the user
-    cursor.execute("SELECT id, username, email FROM admin_users WHERE id=?", (user_id,))
-    user = cursor.fetchone()
-
-    if not user:
-        print(f"Error: User with ID {user_id} not found")
-        conn.close()
-        sys.exit(1)
+    user = resolve_user(cursor, args)
 
     user_id, username, email = user
     print(f"Found user:")
@@ -100,10 +121,13 @@ def main(user_id):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: reset_user_password.py <user_id>")
-        print()
-        print("Example: python reset_user_password.py 42")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Reset a user's password manually."
+    )
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--user-id", type=int, help="Look up user by their ID")
+    group.add_argument("--username", type=str, help="Look up user by their username")
+    group.add_argument("--guestbook-id", type=int, help="Look up user by a guestbook they own")
 
-    main(sys.argv[1])
+    args = parser.parse_args()
+    main(args)
