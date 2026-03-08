@@ -205,7 +205,7 @@ func initRouter() *chi.Mux {
 
 		// this means the user has at most N attempts to submit a message to a given guestbook in a minute
 		submitRateLimiter := httprate.Limit(
-			20,          // requests
+			5,           // requests
 			time.Minute, // per duration
 			httprate.WithKeyFuncs(httprate.KeyByIP, httprate.KeyByEndpoint),
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
