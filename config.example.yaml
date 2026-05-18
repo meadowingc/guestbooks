@@ -19,7 +19,7 @@ server:
 admin:
   # If false, the /admin/signup routes are disabled (return 404) and the
   # "Sign Up" button is hidden. Recommended workflow for a single-tenant
-  # self-hosted instance: leave true, sign up your admin account, then flip
+  # self-hosted instance: leave true, sign up your account, then flip
   # to false and restart.
   allow_signups: true
 

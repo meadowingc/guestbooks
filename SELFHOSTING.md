@@ -61,7 +61,7 @@ Summary:
 |------------------------------|--------------------------|-------------------------------------------------------------------------|
 | `server.public_url`          | `http://localhost:PORT`  | Public origin used in emails and CSRF checks. **Set this in production.** |
 | `server.port`                | `6235`                   | HTTP listen port.                                                       |
-| `admin.allow_signups`        | `true`                   | When false, `/admin/signup` returns 404.                                |
+| `admin.allow_signups`        | `true`                   | When false, `/admin/signup` returns 404 (no new accounts can register). |
 | `branding.show_credits`      | `false`                  | Show maintainer footer credit, ko-fi link, "About" card.               |
 | `branding.support_url`       | `""`                     | Contact URL appended to notification emails.                            |
 | `templates.extra_head_html`  | `""`                     | Raw HTML injected into `<head>` on every page (analytics, fonts, …).   |
@@ -86,9 +86,9 @@ mailer:
 
 If you don't want email at all, set `mailer_name: none`. Email verification
 and password reset won't work, so it's strongly recommended to also set
-`admin.allow_signups: false` after creating your admin account.
+`admin.allow_signups: false` after creating your account.
 
-### Bootstrapping your first admin
+### Bootstrapping your first user
 
 1. Start the server with `admin.allow_signups: true`.
 2. Visit `/admin/signup` and create your account.
@@ -168,7 +168,7 @@ Always back up `guestbook.db` first.
 
 The `scripts/` directory has a couple of maintenance scripts:
 
-- `reset_user_password.py` — reset an admin password directly in the DB.
+- `reset_user_password.py` — reset a user's password directly in the DB.
 - `hard_delete_all_data_for_username.py` — GDPR-style account purge.
 
 Run them while the server is **stopped** to avoid SQLite lock contention.
