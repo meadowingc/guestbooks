@@ -71,6 +71,9 @@ func setupTestEnvironment() error {
 	viper.SetDefault("mail.smtp_host", "localhost")
 	viper.SetDefault("mail.smtp_port", 587)
 
+	// Initialise runtime config so initRouter() can read appConfig values.
+	initRuntimeConfig()
+
 	// Start test server
 	r := initRouter()
 	testServer = &http.Server{

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"guestbook/constants"
 	"log"
 	"net/mail"
 
@@ -89,7 +88,7 @@ func SendMail(recepients []string, subject, body string) error {
 
 func SendVerificationEmail(recipient, token string) error {
 	subject := "[Guestbooks] Please verify your email address"
-	verificationLink := fmt.Sprintf(constants.PUBLIC_URL+"/verify-email?token=%s", token)
+	verificationLink := fmt.Sprintf(PublicURL()+"/verify-email?token=%s", token)
 	body := fmt.Sprintf("Please click on the following link to verify your email address: %s", verificationLink)
 
 	return SendMail([]string{recipient}, subject, body)
@@ -97,7 +96,7 @@ func SendVerificationEmail(recipient, token string) error {
 
 func SendPasswordResetEmail(recipient, token string) error {
 	subject := "[Guestbooks] Password Reset Request"
-	resetLink := fmt.Sprintf(constants.PUBLIC_URL+"/reset-password?token=%s", token)
+	resetLink := fmt.Sprintf(PublicURL()+"/reset-password?token=%s", token)
 	body := fmt.Sprintf(`Hello,
 
 You recently requested to reset your password for your Guestbooks account.

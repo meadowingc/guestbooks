@@ -35,11 +35,17 @@ func main() {
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			log.Fatalf("config.yaml not found in the working directory. " +
+				"Copy config.example.yaml to config.yaml and edit it before starting. " +
+				"For Docker, mount it with `-v $(pwd)/config.yaml:/app/config.yaml:ro`.")
+		}
 		panic(fmt.Errorf("fatal error config file: %w", err))
 	}
 
 	initDatabase()
 	initCache()
+	initRuntimeConfig()
 
 	// Initialize proof-of-work challenge store and start cleanup loop
 	powChallengeStore = NewChallengeStore()
@@ -52,9 +58,9 @@ func main() {
 
 	r := initRouter()
 
-	const portNum = ":6235"
+	portNum := fmt.Sprintf(":%d", appConfig.Port)
 	go func() {
-		log.Printf("Running on http://localhost%s", portNum)
+		log.Printf("Running on http://localhost%s (public URL: %s)", portNum, appConfig.PublicURL)
 		if err := http.ListenAndServe(portNum, r); err != nil {
 			log.Printf("HTTP server stopped: %v", err)
 		}
@@ -140,8 +146,8 @@ func initRouter() *chi.Mux {
 				if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
 					origin := r.Header.Get("Origin")
 					referer := r.Header.Get("Referer")
-					// In production, PUBLIC_URL should be the absolute origin like https://example.com
-					allowed := constants.PUBLIC_URL
+					// In production, server.public_url should be the absolute origin like https://example.com
+					allowed := PublicURL()
 					if constants.DEBUG_MODE {
 						// Accept current host as origin in debug
 						allowed = "//" + r.Host
@@ -172,8 +178,10 @@ func initRouter() *chi.Mux {
 		r.Get("/signin", AdminSignIn)
 		r.Post("/signin", AdminSignIn)
 
-		r.Get("/signup", AdminSignUp)
-		r.Post("/signup", AdminSignUp)
+		if appConfig.AllowSignups {
+			r.Get("/signup", AdminSignUp)
+			r.Post("/signup", AdminSignUp)
+		}
 
 		r.Post("/logout", AdminLogout)
 
@@ -229,7 +237,7 @@ func initRouter() *chi.Mux {
 					log.Fatalf("Error parsing guestbook page template: %v", err)
 				}
 
-				hostUrl := constants.PUBLIC_URL
+				hostUrl := PublicURL()
 				if constants.DEBUG_MODE {
 					hostUrl = "//" + r.Host
 				}

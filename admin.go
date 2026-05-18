@@ -27,11 +27,15 @@ const AdminTokenCookieName = AdminCookieName("admin_token")
 
 func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data any) {
 	templateData := struct {
-		CurrentUser *AdminUser
-		Data        any
+		templateCommon
+		CurrentUser  *AdminUser
+		AllowSignups bool
+		Data         any
 	}{
-		CurrentUser: getSignedInAdminUserOrNil(r),
-		Data:        data,
+		templateCommon: currentTemplateCommon(),
+		CurrentUser:    getSignedInAdminUserOrNil(r),
+		AllowSignups:   appConfig.AllowSignups,
+		Data:           data,
 	}
 
 	templatesDir := "templates/admin"
@@ -165,6 +169,10 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminSignUp(w http.ResponseWriter, r *http.Request) {
+	if !appConfig.AllowSignups {
+		http.NotFound(w, r)
+		return
+	}
 	if r.Method == "GET" {
 		adminUser := getSignedInAdminUserOrNil(r)
 		if adminUser == nil {
@@ -346,7 +354,7 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hostUrl := constants.PUBLIC_URL
+	hostUrl := PublicURL()
 	if constants.DEBUG_MODE {
 		hostUrl = "//" + r.Host
 	}

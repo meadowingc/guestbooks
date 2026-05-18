@@ -21,13 +21,21 @@
                 The platform mostly works and should be fairly stable. Even though it's missing some polish, you can already <a
                     href="/admin/signin">sign in</a>, create a guestbook, and share it with others!
             </p>
+            {{if .Branding.ShowCredits}}
             <p>
                 If you decide to give this a try, I'd really appreciate it if you could <a
                     href="https://codeberg.org/meadowingc/guestbooks/issues">report any issues</a> you find. 😊
             </p>
+            {{else}}
+            <p>
+                This is a self-hosted instance of <i>Guestbooks</i>. If you run into bugs in the software itself,
+                please report them <a href="https://codeberg.org/meadowingc/guestbooks/issues">upstream</a>.
+            </p>
+            {{end}}
         </div>
     </div>
 
+    {{if .Branding.ShowCredits}}
     <div class="card">
         <div class="card-header">
             <h3>About This Project</h3>
@@ -51,6 +59,7 @@
             </p>
         </div>
     </div>
+    {{end}}
 
     <div class="card">
         <div class="card-header">

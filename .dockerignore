@@ -1,0 +1,33 @@
+# Files that should never be included in the Docker build context.
+# Without this, `COPY . .` would ship the live SQLite database (potentially
+# containing real user data!), the working tmp/ dir, and git history.
+
+.git
+.gitignore
+.github
+.air.toml
+tmp/
+*.db
+*.db-*
+test_guestbook.db*
+
+# The maintainer's real config.yaml is gitignored but may exist locally —
+# never bake credentials into the image.
+config.yaml
+
+# Local build artefacts
+guestbooks
+guestbook
+/out
+
+# Editor / OS junk
+.vscode
+.idea
+.DS_Store
+
+# Docs aren't needed inside the runtime image
+*.md
+LICENSE
+
+# Session / planning artefacts
+.copilot

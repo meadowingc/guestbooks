@@ -34,7 +34,7 @@
         </form>
 
         <div class="auth-footer">
-            <p>Don't have an account? <a href="/admin/signup">Sign up here</a></p>
+            {{if .AllowSignups}}<p>Don't have an account? <a href="/admin/signup">Sign up here</a></p>{{end}}
             <p class="mt-2">Forgot your password? <a href="/forgot-password">Reset it here</a></p>
             <p class="text-tiny text-muted" style="margin-top: 1rem;">
                 By using <i>Guestbooks</i> you agree to our

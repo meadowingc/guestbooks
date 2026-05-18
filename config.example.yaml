@@ -1,0 +1,72 @@
+# Copy this file to `config.yaml` (which is gitignored) and edit to match
+# your deployment. All keys have sensible defaults — the only one you really
+# need to set for production is `server.public_url`.
+
+server:
+  # The absolute, externally-visible origin of your instance. Used to build
+  # links in verification/notification emails and to enforce same-origin CSRF
+  # checks. Must NOT have a trailing slash.
+  #
+  # Examples:
+  #   https://guestbooks.example.com
+  #   http://localhost:6235   (dev)
+  public_url: "http://localhost:6235"
+
+  # Port the HTTP server listens on. Typically you'll keep this and front it
+  # with a reverse proxy (nginx, Caddy) that terminates TLS.
+  port: 6235
+
+admin:
+  # If false, the /admin/signup routes are disabled (return 404) and the
+  # "Sign Up" button is hidden. Recommended workflow for a single-tenant
+  # self-hosted instance: leave true, sign up your admin account, then flip
+  # to false and restart.
+  allow_signups: true
+
+branding:
+  # When false (default), the maintainer's footer credit ("Made with ❤️ by
+  # Meadow"), the "report any issues" prompt, the ko-fi link, and the "About
+  # This Project" card on the landing page are hidden. Leaves the upstream
+  # "open source" link intact so users can still find the project.
+  #
+  # Set to true only on the canonical hosted instance.
+  show_credits: false
+
+  # Optional. If set, appears as a contact link in new-message notification
+  # emails ("If you need help, please reach out through here ..."). Leave
+  # empty to omit the sentence entirely.
+  support_url: ""
+
+templates:
+  # Optional raw HTML appended to the <head> of every page (both admin and
+  # public guestbook pages). Use this for analytics, custom fonts,
+  # verification meta tags, favicons, etc. Rendered verbatim — be careful,
+  # whatever you put here ships to every visitor.
+  #
+  # Multi-line YAML example:
+  #   extra_head_html: |
+  #     <script defer data-domain="example.com" src="https://plausible.io/js/script.js"></script>
+  #     <link rel="preconnect" href="https://fonts.gstatic.com" />
+  extra_head_html: ""
+
+mailer:
+  # Which mailer to use:
+  #   - "smtp": any SMTP provider (recommended for self-hosting).
+  #   - "azure_communication_service": Azure Communication Services Email.
+  #   - "none": disable all outbound mail. Email verification and password
+  #             reset will not work. If you choose "none", set
+  #             `admin.allow_signups: false` after creating your account
+  #             so no one else can register an unverifiable account.
+  mailer_name: none
+
+  smtp:
+    host: smtp.example.com
+    port: 587
+    username: your-smtp-username
+    password: your-smtp-password
+    from_email: "Guestbooks <no-reply@example.com>"
+
+  azure_communication_service:
+    host: https://your-acs-resource.communication.azure.com/
+    key: your-acs-access-key
+    from_email: DoNotReply@notifications.example.com

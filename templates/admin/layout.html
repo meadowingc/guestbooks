@@ -11,7 +11,6 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.css" rel="stylesheet" />
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.css" rel="stylesheet" />
-    <script src="https://mochi.meadow.cafe/reaper/meadow/embed/4.js" async></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
@@ -20,6 +19,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/toolbar/prism-toolbar.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/copy-to-clipboard/prism-copy-to-clipboard.min.js"></script>
     <script src="/assets/js/admin-ui.js" defer></script>
+    {{if .ExtraHeadHTML}}{{.ExtraHeadHTML}}{{end}}
 </head>
 
 <body>
@@ -40,7 +40,7 @@
                 </div>
                 {{else}}
                 <a href="/admin/signin" class="btn btn-primary btn-sm">Sign In</a>
-                <a href="/admin/signup" class="btn btn-outline btn-sm">Sign Up</a>
+                {{if .AllowSignups}}<a href="/admin/signup" class="btn btn-outline btn-sm">Sign Up</a>{{end}}
                 {{end}}
                 {{end}}
             </div>
@@ -55,8 +55,8 @@
 
     <footer class="footer">
         <p>
-            This project is <a href="https://codeberg.org/meadowingc/guestbooks">open source</a> • 
-            Made with ❤️ by <a target="_blank" href="https://meadow.cafe/">Meadow</a>
+            This project is <a href="https://codeberg.org/meadowingc/guestbooks">open source</a>{{if .Branding.ShowCredits}} • 
+            Made with ❤️ by <a target="_blank" href="https://meadow.cafe/">Meadow</a>{{end}}
         </p>
     </footer>
 
