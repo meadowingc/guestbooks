@@ -32,6 +32,57 @@ go build -tags release -o guestbooks .
 The server listens on `:6235` by default and prints its public URL on
 startup.
 
+### Create systemd service
+
+In order to keep the binary running in the background, and to 
+automatically start it at boot, a systemd service has to be created.
+
+In `/etc/systemd/system/guestbooks.service`, create the following file:
+
+```systemd
+[Unit]
+Description=Guestbooks service
+After=network.target
+
+[Service]
+User=nameofuser
+Group=groupofuser
+
+WorkingDirectory=/path/to/guestbooks/repo
+ExecStart=/path/to/guestbooks/binary
+
+Restart=always
+RestartSec=3
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=guestbooks
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then, refresh systemd and enable the service:
+
+```bash
+sudo systemctl daemon-reload && \
+sudo systemctl enable guestbooks && \
+sudo systemctl start guestbooks
+```
+
+Check the status of the service:
+
+```bash
+sudo systemctl status guestbooks
+```
+
+To check the logs and to see if everything is working correctly, 
+use journalctl:
+
+```bash
+sudo journalctl -u guestbooks -f
+```
+
 ## Quick start — Docker
 
 ```bash
