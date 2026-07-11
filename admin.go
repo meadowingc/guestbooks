@@ -763,6 +763,76 @@ func AdminBulkDeleteMessages(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Messages deleted successfully"))
 }
 
+func AdminBulkApproveMessages(w http.ResponseWriter, r *http.Request) {
+	guestbookID := chi.URLParam(r, "guestbookID")
+
+	var guestbook Guestbook
+	result := db.First(&guestbook, guestbookID)
+	if result.Error != nil {
+		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		return
+	}
+
+	currentUser := getSignedInAdminOrFail(r)
+	if guestbook.AdminUserID != currentUser.ID {
+		http.Error(w, "You don't own this guestbook", http.StatusUnauthorized)
+		return
+	}
+
+	var requestBody struct {
+		MessageIDs []string `json:"message_ids"`
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&requestBody)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(requestBody.MessageIDs) == 0 {
+		http.Error(w, "No messages specified for approval", http.StatusBadRequest)
+		return
+	}
+
+	messageIDs := make([]uint, 0, len(requestBody.MessageIDs))
+	for _, idStr := range requestBody.MessageIDs {
+		var id int
+		_, err := fmt.Sscanf(idStr, "%d", &id)
+		if err != nil || id <= 0 {
+			http.Error(w, fmt.Sprintf("Invalid message ID: %s", idStr), http.StatusBadRequest)
+			return
+		}
+		messageIDs = append(messageIDs, uint(id))
+	}
+
+	var count int64
+	result = db.Model(&Message{}).Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Count(&count)
+	if result.Error != nil {
+		http.Error(w, "Error validating messages", http.StatusInternalServerError)
+		return
+	}
+	if count != int64(len(messageIDs)) {
+		http.Error(w, "Some messages do not belong to this guestbook", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("admin=%d username=%q action=bulk_approve_messages guestbook_id=%d message_count=%d message_ids=%v",
+		currentUser.ID, currentUser.Username, guestbook.ID, len(messageIDs), messageIDs)
+
+	result = db.Model(&Message{}).
+		Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).
+		Update("approved", true)
+	if result.Error != nil {
+		http.Error(w, "Error approving messages", http.StatusInternalServerError)
+		return
+	}
+
+	messageCache.InvalidateGuestbook(guestbook.ID)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Messages approved successfully"))
+}
+
 func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 	currentUser := getSignedInAdminOrFail(r)
 

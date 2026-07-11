@@ -1,13 +1,14 @@
 // Admin UI Enhancements
 document.addEventListener('DOMContentLoaded', function() {
     
-    // Bulk message deletion functionality
+    // Bulk message actions functionality
     const messagesContainer = document.getElementById('messages-container');
     if (messagesContainer) {
         const selectAllCheckbox = document.getElementById('select-all-messages');
         const messageCheckboxes = document.querySelectorAll('.message-checkbox');
         const bulkActions = document.getElementById('bulk-actions');
         const selectedCountSpan = document.getElementById('selected-count');
+        const bulkApproveBtn = document.getElementById('bulk-approve-btn');
         const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
         
         // Track selected message IDs
@@ -68,6 +69,50 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 updateBulkActionsUI();
+            });
+        }
+
+        // Handle bulk approve button
+        if (bulkApproveBtn) {
+            bulkApproveBtn.addEventListener('click', function() {
+                const count = selectedMessageIds.size;
+
+                if (count === 0) return;
+
+                const guestbookId = window.location.pathname.split('/')[3];
+                const messageIds = Array.from(selectedMessageIds);
+
+                bulkApproveBtn.disabled = true;
+                bulkApproveBtn.innerHTML = '<span class="spinner"></span> Approving...';
+
+                fetch(`/admin/guestbook/${guestbookId}/messages/bulk-approve`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message_ids: messageIds })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to approve messages');
+                    }
+
+                    if (window.showToast) {
+                        window.showToast(`Successfully approved ${count} message${count !== 1 ? 's' : ''}`, 'success');
+                    }
+
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    if (window.showToast) {
+                        window.showToast('Failed to approve messages. Please try again.', 'error');
+                    }
+                    bulkApproveBtn.disabled = false;
+                    bulkApproveBtn.innerHTML = 'Approve Selected';
+                });
             });
         }
         

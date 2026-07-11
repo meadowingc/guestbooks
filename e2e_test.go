@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -743,6 +744,190 @@ func TestBulkDeleteSelectAll(t *testing.T) {
 	}
 
 	t.Log("Select all tests passed!")
+}
+
+func TestBulkApproveMessages(t *testing.T) {
+	page := browser.MustIncognito().MustPage(testBaseURL)
+	defer page.MustClose()
+
+	username := fmt.Sprintf("bulkapprove_%d", time.Now().UnixNano())
+	password := "testpassword123"
+
+	page.MustNavigate(testBaseURL + "/admin/signup")
+	page.MustWaitLoad()
+	page.MustElement("input[name='username']").MustInput(username)
+	page.MustElement("input[name='password']").MustInput(password)
+	page.MustElement("input[type='checkbox']").MustClick()
+	page.MustElement("form button[type='submit']").MustClick()
+	page.MustWaitLoad()
+	page.MustWaitStable()
+
+	var user AdminUser
+	if result := db.Where("username = ?", username).First(&user); result.Error != nil {
+		t.Fatalf("Failed to load admin user: %v", result.Error)
+	}
+
+	guestbook := Guestbook{
+		WebsiteURL:       "https://bulk-approve.example",
+		AdminUserID:      user.ID,
+		RequiresApproval: true,
+	}
+	if result := db.Create(&guestbook); result.Error != nil {
+		t.Fatalf("Failed to create guestbook: %v", result.Error)
+	}
+
+	selectedPending := Message{Name: "Selected Pending", Text: "Approve this pending message", GuestbookID: guestbook.ID}
+	unselectedPending := Message{Name: "Unselected Pending", Text: "Leave this message pending", GuestbookID: guestbook.ID}
+	selectedApproved := Message{Name: "Selected Approved", Text: "This message is already approved", GuestbookID: guestbook.ID, Approved: true}
+	if result := db.Create(&selectedPending); result.Error != nil {
+		t.Fatalf("Failed to create selected pending message: %v", result.Error)
+	}
+	if result := db.Create(&unselectedPending); result.Error != nil {
+		t.Fatalf("Failed to create unselected pending message: %v", result.Error)
+	}
+	if result := db.Create(&selectedApproved); result.Error != nil {
+		t.Fatalf("Failed to create selected approved message: %v", result.Error)
+	}
+
+	fetchPublicMessages := func() []Message {
+		t.Helper()
+
+		response, err := http.Get(fmt.Sprintf("%s/api/v2/get-guestbook-messages/%d", testBaseURL, guestbook.ID))
+		if err != nil {
+			t.Fatalf("Failed to fetch public messages: %v", err)
+		}
+		defer response.Body.Close()
+
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("Expected public API status 200, got %d", response.StatusCode)
+		}
+
+		var body struct {
+			Messages []Message `json:"messages"`
+		}
+		if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+			t.Fatalf("Failed to decode public messages: %v", err)
+		}
+		return body.Messages
+	}
+
+	initialMessages := fetchPublicMessages()
+	if len(initialMessages) != 1 || initialMessages[0].ID != selectedApproved.ID {
+		t.Fatalf("Expected only the pre-approved message before bulk approval, got %+v", initialMessages)
+	}
+
+	page.MustNavigate(fmt.Sprintf("%s/admin/guestbook/%d", testBaseURL, guestbook.ID))
+	page.MustWaitLoad()
+	page.MustElement(fmt.Sprintf(`.message-checkbox[data-message-id="%d"]`, selectedPending.ID)).
+		MustEval(`() => this.click()`)
+	page.MustElement(fmt.Sprintf(`.message-checkbox[data-message-id="%d"]`, selectedApproved.ID)).
+		MustEval(`() => this.click()`)
+	page.MustElement("#bulk-approve-btn").MustEval(`() => this.click()`)
+
+	approvalDeadline := time.Now().Add(5 * time.Second)
+	for {
+		var message Message
+		if result := db.First(&message, selectedPending.ID); result.Error != nil {
+			t.Fatalf("Failed to poll selected message: %v", result.Error)
+		}
+		if message.Approved {
+			break
+		}
+		if time.Now().After(approvalDeadline) {
+			t.Fatal("Timed out waiting for the selected message to be approved")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	var approvedMessages []Message
+	if result := db.Where("id IN ?", []uint{selectedPending.ID, unselectedPending.ID, selectedApproved.ID}).
+		Order("id ASC").
+		Find(&approvedMessages); result.Error != nil {
+		t.Fatalf("Failed to reload messages: %v", result.Error)
+	}
+
+	approvalByID := make(map[uint]bool, len(approvedMessages))
+	for _, message := range approvedMessages {
+		approvalByID[message.ID] = message.Approved
+	}
+	if !approvalByID[selectedPending.ID] {
+		t.Error("Selected pending message should be approved")
+	}
+	if approvalByID[unselectedPending.ID] {
+		t.Error("Unselected pending message should remain pending")
+	}
+	if !approvalByID[selectedApproved.ID] {
+		t.Error("Already-approved selected message should remain approved")
+	}
+
+	publicMessages := fetchPublicMessages()
+	if len(publicMessages) != 2 {
+		t.Fatalf("Expected two public messages after bulk approval, got %d", len(publicMessages))
+	}
+
+	publicIDs := make(map[uint]bool, len(publicMessages))
+	for _, message := range publicMessages {
+		publicIDs[message.ID] = true
+	}
+	if !publicIDs[selectedPending.ID] || !publicIDs[selectedApproved.ID] {
+		t.Error("Public API should include both selected messages after approval")
+	}
+	if publicIDs[unselectedPending.ID] {
+		t.Error("Public API should not include the unselected pending message")
+	}
+
+	otherGuestbook := Guestbook{WebsiteURL: "https://other.example", AdminUserID: user.ID}
+	if result := db.Create(&otherGuestbook); result.Error != nil {
+		t.Fatalf("Failed to create second guestbook: %v", result.Error)
+	}
+	foreignMessage := Message{Name: "Foreign Pending", Text: "Do not approve", GuestbookID: otherGuestbook.ID}
+	if result := db.Create(&foreignMessage); result.Error != nil {
+		t.Fatalf("Failed to create foreign message: %v", result.Error)
+	}
+
+	postBulkApprove := func(messageIDs []string) int {
+		t.Helper()
+
+		body, err := json.Marshal(map[string][]string{"message_ids": messageIDs})
+		if err != nil {
+			t.Fatalf("Failed to encode bulk approval request: %v", err)
+		}
+
+		request, err := http.NewRequest(
+			http.MethodPost,
+			fmt.Sprintf("%s/admin/guestbook/%d/messages/bulk-approve", testBaseURL, guestbook.ID),
+			strings.NewReader(string(body)),
+		)
+		if err != nil {
+			t.Fatalf("Failed to create bulk approval request: %v", err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.AddCookie(&http.Cookie{Name: string(AdminTokenCookieName), Value: user.SessionToken})
+
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("Failed to submit bulk approval request: %v", err)
+		}
+		defer response.Body.Close()
+		return response.StatusCode
+	}
+
+	if status := postBulkApprove(nil); status != http.StatusBadRequest {
+		t.Errorf("Expected empty approval request to return 400, got %d", status)
+	}
+	if status := postBulkApprove([]string{"invalid"}); status != http.StatusBadRequest {
+		t.Errorf("Expected malformed message ID to return 400, got %d", status)
+	}
+	if status := postBulkApprove([]string{fmt.Sprint(foreignMessage.ID)}); status != http.StatusBadRequest {
+		t.Errorf("Expected cross-guestbook approval request to return 400, got %d", status)
+	}
+
+	if result := db.First(&foreignMessage, foreignMessage.ID); result.Error != nil {
+		t.Fatalf("Failed to reload foreign message: %v", result.Error)
+	}
+	if foreignMessage.Approved {
+		t.Error("Cross-guestbook message should remain pending")
+	}
 }
 
 // TestReplyToMessage tests the admin reply functionality

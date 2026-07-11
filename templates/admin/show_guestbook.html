@@ -28,7 +28,7 @@
             {{if .Data.Messages}}
             <div class="callout callout-info mb-3">
                 <p class="text-small" style="margin: 0;">
-                    💡 <strong>Tip:</strong> Click "Edit" on any message to change its approval status or content. Messages pending approval won't appear on your public guestbook.
+                    💡 <strong>Tip:</strong> Select messages to approve or delete them in bulk, or click "Edit" to change a message's content. Pending messages won't appear on your public guestbook.
                 </p>
             </div>
             
@@ -41,6 +41,9 @@
                 </div>
                 <div id="bulk-actions" style="display: none;">
                     <span id="selected-count" class="text-small" style="margin-right: 1rem; color: var(--gray-700);"></span>
+                    <button type="button" id="bulk-approve-btn" class="btn btn-primary btn-sm">
+                        Approve Selected
+                    </button>
                     <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm">
                         Delete Selected
                     </button>
