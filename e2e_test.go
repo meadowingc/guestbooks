@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/spf13/viper"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -265,6 +267,82 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	}
 
 	t.Log("All tests passed!")
+}
+
+func TestGuestbookDatesUseBrowserLocale(t *testing.T) {
+	adminUser := AdminUser{
+		Username:     fmt.Sprintf("datelocaletest_%d", time.Now().UnixNano()),
+		PasswordHash: []byte("test"),
+		SessionToken: fmt.Sprintf("date_locale_token_%d", time.Now().UnixNano()),
+	}
+	if result := db.Create(&adminUser); result.Error != nil {
+		t.Fatalf("Failed to create admin user: %v", result.Error)
+	}
+
+	guestbook := Guestbook{
+		WebsiteURL:  "https://date-locale-test.example",
+		AdminUserID: adminUser.ID,
+	}
+	if result := db.Create(&guestbook); result.Error != nil {
+		t.Fatalf("Failed to create guestbook: %v", result.Error)
+	}
+
+	createdAt := time.Date(2025, time.December, 31, 12, 0, 0, 0, time.UTC)
+	message := Message{
+		Model:       gorm.Model{CreatedAt: createdAt},
+		Name:        "Localized Date Visitor",
+		Text:        "Message with a localized date",
+		GuestbookID: guestbook.ID,
+		Approved:    true,
+	}
+	if result := db.Create(&message); result.Error != nil {
+		t.Fatalf("Failed to create message: %v", result.Error)
+	}
+
+	reply := Message{
+		Model:           gorm.Model{CreatedAt: createdAt},
+		Name:            "Localized Date Admin",
+		Text:            "Reply with a localized date",
+		GuestbookID:     guestbook.ID,
+		Approved:        true,
+		ParentMessageID: &message.ID,
+	}
+	if result := db.Create(&reply); result.Error != nil {
+		t.Fatalf("Failed to create reply: %v", result.Error)
+	}
+
+	localeServer := httptest.NewServer(initRouter())
+	defer localeServer.Close()
+
+	page := browser.MustIncognito().MustPage()
+	defer page.MustClose()
+
+	if err := (proto.EmulationSetLocaleOverride{Locale: "de_DE"}).Call(page); err != nil {
+		t.Fatalf("Failed to set browser locale: %v", err)
+	}
+	if err := (proto.EmulationSetTimezoneOverride{TimezoneID: "UTC"}).Call(page); err != nil {
+		t.Fatalf("Failed to set browser timezone: %v", err)
+	}
+
+	page.MustNavigate(localeServer.URL + fmt.Sprintf("/guestbook/%d", guestbook.ID))
+	page.MustWaitLoad()
+
+	expectedDate := page.MustEval(
+		`() => new Date("2025-12-31T12:00:00Z").toLocaleDateString()`,
+	).Str()
+	expectedText := " - " + expectedDate
+
+	messageDate := page.MustElement(
+		".guestbook-message:not(.guestbook-message-reply) small",
+	).MustText()
+	if messageDate != expectedText {
+		t.Errorf("Expected message date %q, got %q", expectedText, messageDate)
+	}
+
+	replyDate := page.MustElement(".guestbook-message-reply small").MustText()
+	if replyDate != expectedText {
+		t.Errorf("Expected reply date %q, got %q", expectedText, replyDate)
+	}
 }
 
 // TestAPIEndpointsCaching tests the API endpoints directly

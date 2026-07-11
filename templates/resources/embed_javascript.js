@@ -10,6 +10,10 @@
   var isLoading = false;
   var hasMorePages = true;
 
+  function guestbooks___formatDate(value) {
+    return new Date(value).toLocaleDateString();
+  }
+
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
 
@@ -133,12 +137,7 @@
             messageHeader.appendChild(boldElement);
 
             // add date
-            var createdAt = new Date(message.CreatedAt);
-            var formattedDate = createdAt.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            });
+            var formattedDate = guestbooks___formatDate(message.CreatedAt);
 
             var dateElement = document.createElement("small");
             dateElement.textContent = " - " + formattedDate;
@@ -166,12 +165,7 @@
                 replyHeader.appendChild(replyBoldElement);
 
                 // add reply date
-                var replyCreatedAt = new Date(reply.CreatedAt);
-                var replyFormattedDate = replyCreatedAt.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                });
+                var replyFormattedDate = guestbooks___formatDate(reply.CreatedAt);
 
                 var replyDateElement = document.createElement("small");
                 replyDateElement.textContent = " - " + replyFormattedDate;
