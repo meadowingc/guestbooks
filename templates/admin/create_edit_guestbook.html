@@ -57,6 +57,7 @@
                 <label for="submissionMessage">Confirmation text</label>
                 <textarea id="submissionMessage" name="submissionMessage" data-character-limit="2000" rows="3">{{if $isEditing}}{{.Data.SubmissionMessage}}{{end}}</textarea>
                 <div class="form-hint">Write in any language, using up to 2,000 characters of plain text. If approval is required, explain that the message will appear after approval.</div>
+                <div class="form-hint">Default and built-in themes display feedback alongside Submit, stacking it below on mobile. Custom CSS and JavaScript embeds control their own feedback styling.</div>
             </div>
             <div class="form-group" id="redirect-settings">
                 <label for="submissionRedirectURL">Thank-you page URL</label>

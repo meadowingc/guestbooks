@@ -17,6 +17,8 @@ import (
 
 func featureBrowser(t *testing.T) (*rod.Page, string) {
 	t.Helper()
+	// Release-mode scripts fetch messages from the shared public test origin.
+	resetTestRouter()
 	server := httptest.NewServer(initRouter())
 	t.Cleanup(server.Close)
 	instance := browser.MustIncognito()
@@ -282,6 +284,111 @@ func TestSubmissionFeedbackBrowserDefaultAppearance(t *testing.T) {
 	page.MustNavigate(base + fmt.Sprintf("/guestbook/%d?submitted=1", book.ID)).MustWaitLoad()
 	if page.MustEval(`() => getComputedStyle(document.querySelector("#guestbooks___success-message")).backgroundColor`).Str() != "rgba(0, 0, 0, 0)" {
 		t.Fatal("default feedback styling was injected into a custom theme")
+	}
+}
+
+func TestSubmissionFeedbackBrowserThemedFooter(t *testing.T) {
+	for _, theme := range []string{"default", "cherry-mint", "webcomic", "gray-bear", "gray-bear-dark", "cabernete", "peaceful-sky"} {
+		t.Run(theme, func(t *testing.T) {
+			_, book := featureFixture(t)
+			// Keep the title within 320px so overflow checks target form feedback.
+			book.WebsiteURL = "https://a.test"
+			book.SubmissionAction = SubmissionMessage
+			book.SubmissionMessage = "Merci !\nVotre message attend son approbation."
+			book.RequiresApproval = true
+			book.ChallengeQuestion = "Is ice cold?"
+			book.ChallengeAnswer = "yes"
+			book.ChallengeFailedMessage = "Please check your answer."
+			if theme != "default" {
+				book.CustomPageCSS = "<<built__in>>" + strings.TrimSuffix(theme, "-dark") + ".css<</built__in>>"
+			}
+			if err := db.Save(&book).Error; err != nil {
+				t.Fatal(err)
+			}
+			page, base := featureBrowser(t)
+			if strings.HasSuffix(theme, "-dark") {
+				if err := (proto.EmulationSetEmulatedMedia{Features: []*proto.EmulationMediaFeature{
+					{Name: "prefers-color-scheme", Value: "dark"},
+				}}).Call(page); err != nil {
+					t.Fatal(err)
+				}
+			}
+			publicURL := base + fmt.Sprintf("/guestbook/%d", book.ID)
+			for _, width := range []int{1200, 390} {
+				page.MustSetViewport(width, 950, 1, false)
+				page.MustNavigate(publicURL).MustWaitLoad()
+				waitForGuestbook(page)
+				if !page.MustElement("#guestbooks___feedback-container").MustProperty("hidden").Bool() {
+					t.Fatal("empty feedback region is visible")
+				}
+				fillGuestbook(page)
+				page.MustElement("#challengeQuestionAnswer").MustInput("no")
+				clickGuestbookSubmit(page)
+				page.MustWait(`() => document.querySelector("#guestbooks___error-message").textContent.length > 0`)
+				checkThemedFeedbackLayout(t, page, "#guestbooks___error-message", width)
+				if page.MustElement("input[name='name']").MustProperty("value").Str() != "Browser visitor" {
+					t.Fatal("error erased the form")
+				}
+				page.MustElement("#challengeQuestionAnswer").MustSelectAllText().MustInput("yes")
+				clickGuestbookSubmit(page)
+				page.MustWait(`text => document.querySelector("#guestbooks___success-message")?.textContent === text`, book.SubmissionMessage)
+				checkThemedFeedbackLayout(t, page, "#guestbooks___success-message", width)
+				if page.MustElement("#guestbooks___error-message").MustText() != "" {
+					t.Fatal("error remained after successful submission")
+				}
+			}
+			page.MustNavigate(publicURL + "?submitted=1").MustWaitLoad()
+			checkThemedFeedbackLayout(t, page, "#guestbooks___success-message", 390)
+			book.SubmissionMessage = strings.Repeat("x", maxConfirmationLength)
+			if err := db.Save(&book).Error; err != nil {
+				t.Fatal(err)
+			}
+			page.MustSetViewport(320, 950, 1, false)
+			page.MustNavigate(publicURL + "?submitted=1").MustWaitLoad()
+			checkThemedFeedbackLayout(t, page, "#guestbooks___success-message", 320)
+			if len(page.MustElement("#guestbooks___success-message").MustText()) != maxConfirmationLength {
+				t.Fatal("long confirmation was truncated")
+			}
+			book.SubmissionAction = SubmissionUnchanged
+			if err := db.Save(&book).Error; err != nil {
+				t.Fatal(err)
+			}
+			page.MustNavigate(publicURL).MustWaitLoad()
+			if page.MustHas(".guestbooks___form-footer") || page.MustHas("link[href='/assets/css/guestbook-feedback.css']") {
+				t.Fatal("feedback styling or layout affected an opted-out guestbook")
+			}
+		})
+	}
+}
+
+func checkThemedFeedbackLayout(t *testing.T, page *rod.Page, selector string, width int) {
+	t.Helper()
+	result := page.MustEval(`(selector, width) => {
+		const notice = document.querySelector(selector);
+		const button = document.querySelector("input[type='submit']");
+		const status = notice.getBoundingClientRect(), submit = button.getBoundingClientRect();
+		const style = getComputedStyle(notice);
+		function luminance(color) {
+			const channels = color.match(/[\d.]+/g).slice(0, 3).map(value => {
+				const c = Number(value) / 255;
+				return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+			});
+			return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+		}
+		const ink = luminance(style.color), background = luminance(style.backgroundColor);
+		const contrast = (Math.max(ink, background) + 0.05) / (Math.min(ink, background) + 0.05);
+		return {
+			inFooter: notice.parentElement.id === "guestbooks___feedback-container",
+			visible: status.height >= 44 && submit.height >= 44 && parseFloat(style.paddingLeft) >= 30,
+			placed: width > 600 ? Math.abs(status.top - submit.top) < 1 && status.left >= submit.right + 8
+				: status.top >= submit.bottom + 8,
+			withinPage: document.documentElement.scrollWidth <= innerWidth,
+			contrast, whiteSpace: style.whiteSpace
+		};
+	}`, selector, width)
+	if !result.Get("inFooter").Bool() || !result.Get("visible").Bool() || !result.Get("placed").Bool() ||
+		!result.Get("withinPage").Bool() || result.Get("contrast").Num() < 4.5 || result.Get("whiteSpace").Str() != "pre-wrap" {
+		t.Fatalf("invalid feedback layout for %s at %dpx: %s", selector, width, result.JSON("", "  "))
 	}
 }
 

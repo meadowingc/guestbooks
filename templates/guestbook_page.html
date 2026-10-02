@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+{{$themedFeedback := and .SubmissionAction (or (eq .CustomPageCSS "") (ne .SelectedBuiltInTheme ""))}}
 
 <head>
     <meta charset="UTF-8">
@@ -15,24 +16,6 @@
             display: block;
             margin-top: 0.4rem;
         }
-        #guestbooks___success-message:not(:empty){{if .SubmissionAction}},
-        #guestbooks___error-message:not(:empty){{end}} {
-            margin: 1rem 0;
-            padding: 1rem 1.2rem;
-            border-inline-start: 0.3rem solid;
-            border-radius: 0.3rem;
-            overflow-wrap: anywhere;
-        }
-        #guestbooks___success-message {
-            color: #175e3b;
-            background: #edf8f1;
-            border-color: #218654;
-        }
-        {{if .SubmissionAction}}#guestbooks___error-message {
-            color: #922b21;
-            background: #fff1ef;
-            border-color: #c0392b;
-        }{{end}}
     </style>
     {{ else if not (eq .SelectedBuiltInTheme "")}}
     <link rel="stylesheet" href="/assets/premade_styles/{{.SelectedBuiltInTheme}}">
@@ -41,6 +24,7 @@
         {{.CustomPageCSS}}
     </style>
     {{end}}
+    {{if $themedFeedback}}<link rel="stylesheet" href="/assets/css/guestbook-feedback.css">{{end}}
     {{if .ExtraHeadHTML}}{{.ExtraHeadHTML}}{{end}}
 </head>
 
@@ -66,11 +50,21 @@
                         <textarea placeholder="Message (plain text only)..." id="text" name="text" style="width: 100%; box-sizing: border-box; resize: vertical;"
                             required></textarea>
                     </div>
-                    <br />
+                    {{if not $themedFeedback}}<br />{{end}}
                     <div id="guestbooks___pow-status"></div>
+                    {{if $themedFeedback}}
+                    <div class="guestbooks___form-footer" data-guestbooks-theme="{{if .SelectedBuiltInTheme}}{{.SelectedBuiltInTheme}}{{else}}default{{end}}">
+                        <input type="submit" value="Submit">
+                        <div id="guestbooks___feedback-container" {{if not .ConfirmationMessage}}hidden{{end}}>
+                            <div id="guestbooks___error-message"></div>
+                            {{if .ConfirmationMessage}}<div id="guestbooks___success-message" role="status" aria-live="polite" style="white-space: pre-wrap;">{{.ConfirmationMessage}}</div>{{end}}
+                        </div>
+                    </div>
+                    {{else}}
                     <input type="submit" value="Submit">
                     <div id="guestbooks___error-message"></div>
                     {{if .ConfirmationMessage}}<div id="guestbooks___success-message" role="status" aria-live="polite" style="white-space: pre-wrap;">{{.ConfirmationMessage}}</div>{{end}}
+                    {{end}}
                 </form>
             </div>
             <div id="guestbooks___guestbook-made-with" style="text-align: right;">

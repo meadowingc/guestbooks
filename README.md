@@ -42,8 +42,11 @@ Hosted pages and iframe forms pick up field/label changes on their next load.
 Self-hosted copies of the JavaScript source, rather than a script URL pointing
 to the updated Guestbooks service, must be updated separately.
 
-When feedback is enabled, the default hosted theme highlights confirmations and errors.
-Custom themes and JavaScript embeds keep their own styling; use
+When feedback is enabled, hosted pages and iframes using the default or a
+built-in theme group the submit button and feedback in a themed footer:
+side by side on wider screens and stacked on mobile. Confirmation and error
+panels have distinct visual markers, and owner-written text stays unchanged.
+Custom CSS and JavaScript embeds keep their own styling; use
 `#guestbooks___success-message` and `#guestbooks___error-message` to style feedback.
 Without opting in, existing hosted form spacing and successful JavaScript
 submission layouts are unchanged.

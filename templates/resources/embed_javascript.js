@@ -10,6 +10,7 @@
   var resetPow = null;
   var reloadRequested = false;
   var previousSubmitStates = null;
+  var feedbackRegion = form.querySelector("#guestbooks___feedback-container");
 
   function updateSubmitState() {
     if (submissionInFlight || !powReady) {
@@ -28,12 +29,13 @@
     if (!container) {
       container = document.createElement("div");
       container.id = id;
-      form.appendChild(container);
+      (feedbackRegion || form).appendChild(container);
     }
     container.setAttribute("role", role);
     if (role === "status") container.setAttribute("aria-live", "polite");
     container.style.whiteSpace = "pre-wrap";
     container.hidden = false;
+    if (feedbackRegion) feedbackRegion.hidden = false;
     return container;
   }
 
@@ -61,6 +63,7 @@
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
     if (submissionInFlight) return;
+    if (feedbackRegion) feedbackRegion.hidden = true;
     var errorContainer = form.querySelector("#guestbooks___error-message");
     var successContainer = form.querySelector("#guestbooks___success-message");
     if (errorContainer) errorContainer.textContent = "";

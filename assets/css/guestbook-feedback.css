@@ -1,0 +1,153 @@
+.guestbooks___form-footer {
+  --feedback-text: #175e3b;
+  --feedback-background: #edf8f1;
+  --feedback-border: #9fc5ad;
+  --feedback-divider: #d0dbd4;
+  --feedback-error-text: #8d2725;
+  --feedback-error-background: #fff1ef;
+  --feedback-error-border: #d48a86;
+  --feedback-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1em;
+  margin-block: 1.25em;
+  padding-block-start: 1em;
+  border-block-start: 1px solid var(--feedback-divider);
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="cherry-mint.css"] {
+  --feedback-text: #304c26;
+  --feedback-background: #f2faee;
+  --feedback-border: #7aa469;
+  --feedback-divider: #a1c98e;
+  --feedback-radius: 5px;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="webcomic.css"] {
+  --feedback-text: #c3e9ca;
+  --feedback-background: #16333a;
+  --feedback-border: #4d7c80;
+  --feedback-divider: #33585f;
+  --feedback-error-text: #ffd0cb;
+  --feedback-error-background: #3a2329;
+  --feedback-error-border: #a96064;
+  --feedback-radius: 5px;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="gray-bear.css"] {
+  --feedback-text: var(--text-color);
+  --feedback-background: #f2efeb;
+  --feedback-border: #b7ab9e;
+  --feedback-divider: #d8cec4;
+  --feedback-radius: 2px;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="cabernete.css"] {
+  --feedback-text: #593146;
+  --feedback-background: #f5edf1;
+  --feedback-border: #b2879c;
+  --feedback-divider: #d8c8d0;
+  --feedback-radius: 3px;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="peaceful-sky.css"] {
+  --feedback-text: #07527a;
+  --feedback-background: #e9f7ff;
+  --feedback-border: #5bb1d9;
+  --feedback-divider: #76bedb;
+}
+
+@media (prefers-color-scheme: dark) {
+  .guestbooks___form-footer[data-guestbooks-theme="gray-bear.css"] {
+    --feedback-background: #343536;
+    --feedback-border: #737577;
+    --feedback-divider: #606263;
+    --feedback-error-text: #ffcdca;
+    --feedback-error-background: #3a2728;
+    --feedback-error-border: #a96764;
+  }
+}
+
+#guestbooks___guestbook-form .guestbooks___form-footer > input[type="submit"] {
+  flex: 0 0 auto;
+  margin: 0;
+  min-height: 44px;
+  padding: 0.85em 1.25em;
+  border: 1px solid transparent;
+  border-radius: var(--feedback-radius);
+  font: inherit;
+  font-weight: bold;
+  line-height: 1.5;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="cherry-mint.css"] > input[type="submit"] {
+  background: #3c5832;
+}
+
+.guestbooks___form-footer[data-guestbooks-theme="gray-bear.css"] > input[type="submit"] {
+  background: var(--heading-color);
+  color: var(--background-color);
+}
+
+#guestbooks___feedback-container {
+  flex: 1 1 18em;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  #guestbooks___feedback-container {
+    flex-basis: 100%;
+  }
+}
+
+#guestbooks___feedback-container[hidden],
+#guestbooks___feedback-container > [hidden],
+#guestbooks___feedback-container > :empty {
+  display: none;
+}
+
+#guestbooks___feedback-container > :not(:empty) {
+  box-sizing: border-box;
+  position: relative;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.85em 1em 0.85em 3em;
+  border: 1px solid var(--feedback-border);
+  border-radius: var(--feedback-radius);
+  background: var(--feedback-background);
+  color: var(--feedback-text);
+  font: inherit;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+#guestbooks___feedback-container > #guestbooks___success-message::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 1.2em;
+  top: 1em;
+  width: 0.4em;
+  height: 0.8em;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+#guestbooks___feedback-container > #guestbooks___error-message {
+  border-color: var(--feedback-error-border);
+  background: var(--feedback-error-background);
+  color: var(--feedback-error-text);
+}
+
+#guestbooks___feedback-container > #guestbooks___error-message::before {
+  content: "!";
+  position: absolute;
+  inset-inline-start: 1em;
+  top: 0.85em;
+  width: 1em;
+  text-align: center;
+  font-weight: bold;
+}
