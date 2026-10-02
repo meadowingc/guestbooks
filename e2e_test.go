@@ -1,17 +1,19 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
@@ -20,15 +22,13 @@ import (
 	"gorm.io/gorm"
 )
 
-const (
-	testPort    = ":16235"
-	testBaseURL = "http://localhost:16235"
-	testDBFile  = "test_guestbook.db"
-)
-
 var (
-	testServer *http.Server
-	browser    *rod.Browser
+	testServer   *httptest.Server
+	testBaseURL  string
+	testDBDir    string
+	browser      *rod.Browser
+	testRequests *rod.HijackRouter
+	testRouter   atomic.Pointer[chi.Mux]
 )
 
 // TestMain sets up and tears down the test environment
@@ -48,12 +48,13 @@ func TestMain(m *testing.M) {
 }
 
 func setupTestEnvironment() error {
-	// Clean up any existing test database
-	os.Remove(testDBFile)
-
-	// Initialize test database
 	var err error
-	db, err = gorm.Open(sqlite.Open("file:"+testDBFile+"?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{})
+	testDBDir, err = os.MkdirTemp("", "guestbooks-tests-")
+	if err != nil {
+		return err
+	}
+	testDBFile := filepath.Join(testDBDir, "guestbook.db")
+	db, err = gorm.Open(sqlite.Open("file:"+testDBFile+"?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{Logger: databaseLogger})
 	if err != nil {
 		return fmt.Errorf("failed to connect to test database: %w", err)
 	}
@@ -73,35 +74,43 @@ func setupTestEnvironment() error {
 	// Load config (or use defaults)
 	viper.SetDefault("mail.smtp_host", "localhost")
 	viper.SetDefault("mail.smtp_port", 587)
+	viper.Set("mailer.mailer_name", "none")
 
 	// Initialise runtime config so initRouter() can read appConfig values.
 	initRuntimeConfig()
 
 	// Start test server
-	r := initRouter()
-	testServer = &http.Server{
-		Addr:    testPort,
-		Handler: r,
-	}
-
-	go func() {
-		if err := testServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Test server error: %v", err)
-		}
-	}()
-
-	// Wait for server to be ready
-	time.Sleep(500 * time.Millisecond)
+	powChallengeStore = NewChallengeStore()
+	resetTestRouter()
+	testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		testRouter.Load().ServeHTTP(w, r)
+	}))
+	testBaseURL = testServer.URL
+	appConfig.PublicURL = testBaseURL
 
 	// Launch browser
 	l := launcher.New().Headless(true).MustLaunch()
 	browser = rod.New().ControlURL(l).MustConnect()
+	testRequests = browser.HijackRequests()
+	testRequests.MustAdd("https://cdnjs.cloudflare.com/*", func(ctx *rod.Hijack) {
+		ctx.Response.SetBody("")
+	})
+	go testRequests.Run()
 
 	log.Println("Test environment setup complete")
 	return nil
 }
 
+func resetTestRouter() {
+	testRouter.Store(initRouter())
+}
+
 func teardownTestEnvironment() {
+	if testRequests != nil {
+		if err := testRequests.Stop(); err != nil {
+			log.Printf("Error stopping test request interception: %v", err)
+		}
+	}
 	// Close browser
 	if browser != nil {
 		browser.MustClose()
@@ -109,9 +118,7 @@ func teardownTestEnvironment() {
 
 	// Shutdown server
 	if testServer != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		testServer.Shutdown(ctx)
+		testServer.Close()
 	}
 
 	// Close database
@@ -122,14 +129,19 @@ func teardownTestEnvironment() {
 		}
 	}
 
-	// Remove test database
-	os.Remove(testDBFile)
+	if testDBDir != "" {
+		os.Remove(filepath.Join(testDBDir, "guestbook.db"))
+		os.Remove(filepath.Join(testDBDir, "guestbook.db-wal"))
+		os.Remove(filepath.Join(testDBDir, "guestbook.db-shm"))
+		os.Remove(testDBDir)
+	}
 
 	log.Println("Test environment teardown complete")
 }
 
 // TestGuestbookBasicFlow tests the complete user journey
 func TestGuestbookBasicFlow(t *testing.T) {
+	resetTestRouter()
 	page := browser.MustPage(testBaseURL)
 	defer page.MustClose()
 
@@ -271,6 +283,7 @@ func TestGuestbookBasicFlow(t *testing.T) {
 }
 
 func TestGuestbookDatesUseBrowserLocale(t *testing.T) {
+	resetTestRouter()
 	adminUser := AdminUser{
 		Username:     fmt.Sprintf("datelocaletest_%d", time.Now().UnixNano()),
 		PasswordHash: []byte("test"),
@@ -348,6 +361,7 @@ func TestGuestbookDatesUseBrowserLocale(t *testing.T) {
 
 // TestAPIEndpointsCaching tests the API endpoints directly
 func TestAPIEndpointsCaching(t *testing.T) {
+	resetTestRouter()
 	// Create a test guestbook directly in the database
 	adminUser := AdminUser{
 		Username:     fmt.Sprintf("apitest_%d", time.Now().Unix()),
@@ -410,6 +424,7 @@ func TestAPIEndpointsCaching(t *testing.T) {
 
 // TestBulkDeleteMessages tests the bulk delete functionality
 func TestBulkDeleteMessages(t *testing.T) {
+	resetTestRouter()
 	// Use incognito mode to avoid session conflicts with previous tests
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
@@ -573,6 +588,7 @@ func TestBulkDeleteMessages(t *testing.T) {
 
 // TestBulkDeleteCrossGuestbookIsolation ensures users can't delete messages from other guestbooks
 func TestBulkDeleteCrossGuestbookIsolation(t *testing.T) {
+	resetTestRouter()
 	// This test validates backend security - that users can't delete messages from other users' guestbooks
 	t.Log("Testing cross-guestbook isolation via backend validation")
 
@@ -626,6 +642,7 @@ func TestBulkDeleteCrossGuestbookIsolation(t *testing.T) {
 
 // TestBulkDeleteValidation tests edge cases and validation
 func TestBulkDeleteValidation(t *testing.T) {
+	resetTestRouter()
 	// This test validates the backend properly rejects invalid requests
 	t.Log("Testing bulk delete validation logic")
 
@@ -662,6 +679,7 @@ func TestBulkDeleteValidation(t *testing.T) {
 
 // TestBulkDeleteSelectAll tests the select all checkbox functionality
 func TestBulkDeleteSelectAll(t *testing.T) {
+	resetTestRouter()
 	// Use incognito mode to avoid session conflicts with previous tests
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
@@ -747,6 +765,7 @@ func TestBulkDeleteSelectAll(t *testing.T) {
 }
 
 func TestBulkApproveMessages(t *testing.T) {
+	resetTestRouter()
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
 
@@ -932,6 +951,7 @@ func TestBulkApproveMessages(t *testing.T) {
 
 // TestReplyToMessage tests the admin reply functionality
 func TestReplyToMessage(t *testing.T) {
+	resetTestRouter()
 	// Use incognito mode to avoid session conflicts with previous tests
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
@@ -1063,6 +1083,7 @@ func TestReplyToMessage(t *testing.T) {
 
 // TestMultipleRepliesToSameMessage tests adding multiple replies to a single message
 func TestMultipleRepliesToSameMessage(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing multiple replies to the same message")
 
 	// Create test data directly in database
@@ -1130,6 +1151,7 @@ func TestMultipleRepliesToSameMessage(t *testing.T) {
 
 // TestReplyOnlyOneLevelDeep tests that replies to replies are not allowed
 func TestReplyOnlyOneLevelDeep(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing that nested replies (reply to reply) are not allowed")
 
 	// Create test data
@@ -1200,6 +1222,7 @@ func TestReplyOnlyOneLevelDeep(t *testing.T) {
 
 // TestReplyEmptyTextValidation tests that empty replies are rejected
 func TestReplyEmptyTextValidation(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing empty reply validation")
 
 	user := AdminUser{
@@ -1258,6 +1281,7 @@ func TestReplyEmptyTextValidation(t *testing.T) {
 
 // TestReplyCrossGuestbookIsolation tests that users can't reply to messages in other users' guestbooks
 func TestReplyCrossGuestbookIsolation(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing cross-guestbook reply isolation")
 
 	// Create two users with their own guestbooks
@@ -1332,6 +1356,7 @@ func TestReplyCrossGuestbookIsolation(t *testing.T) {
 
 // TestReplyToMessageFromDifferentGuestbook tests that users can't reply to messages not in the specified guestbook
 func TestReplyToMessageFromDifferentGuestbook(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing reply to message from different guestbook")
 
 	user := AdminUser{
@@ -1398,6 +1423,7 @@ func TestReplyToMessageFromDifferentGuestbook(t *testing.T) {
 
 // TestReplyCacheInvalidation tests that cache is invalidated when a reply is added
 func TestReplyCacheInvalidation(t *testing.T) {
+	resetTestRouter()
 	// Use incognito mode to avoid session conflicts
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
@@ -1480,6 +1506,7 @@ func TestReplyCacheInvalidation(t *testing.T) {
 
 // TestReplyToNonExistentMessage tests error handling for non-existent messages
 func TestReplyToNonExistentMessage(t *testing.T) {
+	resetTestRouter()
 	t.Log("Testing reply to non-existent message")
 
 	user := AdminUser{
@@ -1525,6 +1552,7 @@ func TestReplyToNonExistentMessage(t *testing.T) {
 // TestDisplayNameOnReplies tests that the display name setting controls the name shown on replies,
 // and that changing it retroactively updates all existing replies.
 func TestDisplayNameOnReplies(t *testing.T) {
+	resetTestRouter()
 	// Use incognito mode to avoid session conflicts
 	page := browser.MustIncognito().MustPage(testBaseURL)
 	defer page.MustClose()
@@ -1599,7 +1627,7 @@ func TestDisplayNameOnReplies(t *testing.T) {
 
 	page.MustElement("input[name='display_name']").MustInput(displayName)
 	// Submit the display name form (first form on the page)
-	page.MustElements("form button[type='submit']")[0].MustClick()
+	page.MustElement("#display-name-settings-form button[type='submit']").MustClick()
 	page.MustWaitLoad()
 	time.Sleep(500 * time.Millisecond)
 
@@ -1673,7 +1701,7 @@ func TestDisplayNameOnReplies(t *testing.T) {
 	dnInput := page.MustElement("input[name='display_name']")
 	dnInput.MustSelectAllText()
 	dnInput.MustInput("")
-	page.MustElements("form button[type='submit']")[0].MustClick()
+	page.MustElement("#display-name-settings-form button[type='submit']").MustClick()
 	page.MustWaitLoad()
 	time.Sleep(500 * time.Millisecond)
 

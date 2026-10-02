@@ -139,6 +139,25 @@ If you don't want email at all, set `mailer_name: none`. Email verification
 and password reset won't work, so it's strongly recommended to also set
 `admin.allow_signups: false` after creating your account.
 
+Account settings and moderated guestbooks display notification setup status.
+Owners need a saved, verified email address and notifications enabled.
+Changing an account email requires verification again. The resend button
+uses the saved address and is limited to one request per account per minute;
+delivery-request failures are shown rather than reported as sent. Check
+the spam folder and your configured provider if verification does not arrive.
+An enabled status describes configuration, not guaranteed delivery.
+
+When the instance mailer is `none`, the UI explicitly reports that email
+delivery is unavailable. Debug builds also log new-message notifications
+instead of sending them; use the documented release build for deployment.
+
+Optional private visitor email collection is independent of outbound mail.
+It stores addresses in SQLite for the guestbook owner's dashboard, not in
+public APIs or notification emails. These addresses are not encrypted from
+the hosting operator and are included in database backups. Disabling collection
+does not erase old addresses. Existing message soft-deletion and backup
+retention remain unchanged; protect database files and backups accordingly.
+
 ### Bootstrapping your first user
 
 1. Start the server with `admin.allow_signups: true`.

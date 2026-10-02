@@ -1,6 +1,9 @@
 package main
 
 import (
+	"net/url"
+	"strings"
+
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
@@ -12,6 +15,13 @@ type Guestbook struct {
 	AdminUserID      uint `gorm:"index"`
 	RequiresApproval bool `gorm:"default:false"`
 	PowEnabled       bool `gorm:"default:false"`
+
+	SubmissionAction      SubmissionAction `gorm:"default:''" json:"-"`
+	SubmissionMessage     string           `json:"-"`
+	SubmissionRedirectURL string           `json:"-"`
+	CollectEmail          bool             `gorm:"default:false" json:"-"`
+	EmailFieldLabel       string           `json:"-"`
+	EmailFieldHelp        string           `json:"-"`
 
 	ChallengeQuestion      string
 	ChallengeAnswer        string
@@ -29,11 +39,19 @@ type Message struct {
 	Name            string
 	Text            string
 	Website         *string
+	Email           *string `json:"-"`
 	Approved        bool
 	GuestbookID     uint      `gorm:"index"`
 	Guestbook       Guestbook `gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	ParentMessageID *uint     `gorm:"index"`
 	Replies         []Message `gorm:"foreignKey:ParentMessageID"`
+}
+
+func (m Message) EmailLink() string {
+	if m.Email == nil {
+		return ""
+	}
+	return "mailto:" + strings.ReplaceAll(url.QueryEscape(*m.Email), "+", "%20")
 }
 
 // AdminUser represents an admin user with access to the admin panel

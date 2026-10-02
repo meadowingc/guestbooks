@@ -91,3 +91,12 @@
 </body>
 
 </html>
+
+{{define "notification-status"}}
+<div class="callout {{if eq .State "enabled"}}callout-info{{else}}callout-warning{{end}}" data-notification-state="{{.State}}">
+    <p class="text-small" style="margin: 0;">
+        {{.Message}}
+        {{if .NeedsSetup}}<a href="/admin/settings#email-notifications">Configure email notifications</a>{{end}}
+    </p>
+</div>
+{{end}}

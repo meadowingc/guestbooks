@@ -37,11 +37,66 @@
                         {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>
                     <span>Require approval before messages are publicly displayed</span>
                 </label>
-                <div class="form-hint">
-                    💡 Tip: If you enable message approval, we recommend enabling email notifications in your 
-                    <a href="/admin/settings">user settings</a> to get notified of new messages.
+                <div id="moderation-notification-status" {{if not (and $isEditing .Data.RequiresApproval)}}hidden{{end}}>
+                    {{template "notification-status" .NotificationStatus}}
                 </div>
             </div>
+        </div>
+
+        <div class="form-section">
+            <h4>After Submission</h4>
+            <div class="form-group">
+                <label for="submissionAction">After a message is received</label>
+                <select id="submissionAction" name="submissionAction">
+                    <option value="" {{if not (and $isEditing .Data.SubmissionAction)}}selected{{end}}>Keep current behavior (no confirmation)</option>
+                    <option value="message" {{if and $isEditing (eq .Data.SubmissionAction "message")}}selected{{end}}>Show a confirmation message</option>
+                    <option value="redirect" {{if and $isEditing (eq .Data.SubmissionAction "redirect")}}selected{{end}}>Go to another page</option>
+                </select>
+            </div>
+            <div class="form-group" id="confirmation-settings">
+                <label for="submissionMessage">Confirmation text</label>
+                <textarea id="submissionMessage" name="submissionMessage" data-character-limit="2000" rows="3">{{if $isEditing}}{{.Data.SubmissionMessage}}{{end}}</textarea>
+                <div class="form-hint">Write in any language, using up to 2,000 characters of plain text. If approval is required, explain that the message will appear after approval.</div>
+            </div>
+            <div class="form-group" id="redirect-settings">
+                <label for="submissionRedirectURL">Thank-you page URL</label>
+                <input type="url" id="submissionRedirectURL" name="submissionRedirectURL" data-byte-limit="2048"
+                    placeholder="https://example.com/thank-you" {{if $isEditing}}value="{{.Data.SubmissionRedirectURL}}"{{end}}>
+                <div class="form-hint">Use an absolute HTTP(S) URL. Iframe embeds navigate inside the iframe, so the destination must allow embedding. An existing redirect_to_url hidden input takes precedence.</div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h4>Private Visitor Email</h4>
+            <input type="hidden" name="emailCollectionSettings" value="1">
+            <div class="form-group">
+                <label class="checkbox-label checkbox-label-top">
+                    <input type="checkbox" id="collectEmail" name="collectEmail" {{if and $isEditing .Data.CollectEmail}}checked{{end}}>
+                    <span>Allow visitors to leave an optional private email address</span>
+                </label>
+                <div class="form-hint">Only you can see these addresses in your dashboard. They are never public or included in notification emails.</div>
+            </div>
+            <div id="email-field-settings">
+                <div class="form-group">
+                    <label for="emailFieldLabel">Email field label</label>
+                    <input type="text" id="emailFieldLabel" name="emailFieldLabel" data-character-limit="120"
+                        value="{{if and $isEditing .Data.EmailFieldLabel}}{{.Data.EmailFieldLabel}}{{else}}Email (optional){{end}}">
+                </div>
+                <div class="form-group">
+                    <label for="emailFieldHelp">Email field help (optional)</label>
+                    <textarea id="emailFieldHelp" name="emailFieldHelp" data-character-limit="500" rows="2">{{if $isEditing}}{{.Data.EmailFieldHelp}}{{else}}Only the guestbook owner can see your email address.{{end}}</textarea>
+                    <div class="form-hint">Customize the label and help in your own language (120 and 500 characters respectively).</div>
+                </div>
+            </div>
+            <p class="form-hint">
+                Hosted pages and iframe embeds update automatically. Using a custom JavaScript embed?
+                {{if $isEditing}}<a href="/admin/guestbook/{{.Data.ID}}/embed">Get updated embed code</a>{{else}}Get the updated embed code after saving{{end}}
+                and add the optional email field to your site's HTML.
+            </p>
+            <details class="settings-details">
+                <summary>Existing embeds and turning collection off</summary>
+                <p class="form-hint">Fields are never inserted into existing custom embeds automatically. Keep the email field optional. If you turn collection off, remove it from your site's HTML: new addresses will no longer be saved, but previous addresses remain in your dashboard. The optional Website field is unchanged.</p>
+            </details>
         </div>
 
         <div class="form-section">
@@ -150,10 +205,43 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
+        const moderation = document.getElementById("requiresApproval");
+        moderation.addEventListener("change", function () {
+            document.getElementById("moderation-notification-status").hidden = !moderation.checked;
+        });
+        const submissionAction = document.getElementById("submissionAction");
+        const collectEmail = document.getElementById("collectEmail");
+        function updateOptions() {
+            document.getElementById("confirmation-settings").hidden = submissionAction.value !== "message";
+            document.getElementById("submissionMessage").required = submissionAction.value === "message";
+            document.getElementById("submissionMessage").disabled = submissionAction.value !== "message";
+            document.getElementById("redirect-settings").hidden = submissionAction.value !== "redirect";
+            document.getElementById("submissionRedirectURL").required = submissionAction.value === "redirect";
+            document.getElementById("submissionRedirectURL").disabled = submissionAction.value !== "redirect";
+            document.getElementById("email-field-settings").hidden = !collectEmail.checked;
+            document.getElementById("emailFieldLabel").required = collectEmail.checked;
+            document.getElementById("emailFieldLabel").disabled = !collectEmail.checked;
+            document.getElementById("emailFieldHelp").disabled = !collectEmail.checked;
+        }
+        submissionAction.addEventListener("change", updateOptions);
+        collectEmail.addEventListener("change", updateOptions);
+        updateOptions();
+
+        document.querySelectorAll("[data-character-limit], [data-byte-limit]").forEach(input => {
+            function validateLength() {
+                const value = input.value.trim();
+                const limit = Number(input.dataset.characterLimit || input.dataset.byteLimit);
+                const length = input.dataset.characterLimit ? Array.from(value).length : new TextEncoder().encode(value).length;
+                input.setCustomValidity(length > limit ? `Use at most ${limit} ${input.dataset.characterLimit ? "characters" : "bytes"}.` : "");
+            }
+            input.addEventListener("input", validateLength);
+            validateLength();
+        });
+
         const styleDropdown = document.getElementById("premadeStyles");
         const customCSSTextarea = document.getElementById("customPageCSS");
         const styleCache = {};
-        const serverSelectedTheme = "{{with .Data.SelectedTheme}}{{.}}{{end}}";
+        const serverSelectedTheme = "{{if $isEditing}}{{.Data.SelectedTheme}}{{end}}";
         if (serverSelectedTheme) {
             styleDropdown.value = serverSelectedTheme;
         }

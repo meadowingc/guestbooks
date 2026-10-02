@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -28,14 +29,16 @@ const AdminTokenCookieName = AdminCookieName("admin_token")
 func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, data any) {
 	templateData := struct {
 		templateCommon
-		CurrentUser  *AdminUser
-		AllowSignups bool
-		Data         any
+		CurrentUser        *AdminUser
+		NotificationStatus notificationStatus
+		AllowSignups       bool
+		Data               any
 	}{
-		templateCommon: currentTemplateCommon(),
-		CurrentUser:    getSignedInAdminUserOrNil(r),
-		AllowSignups:   appConfig.AllowSignups,
-		Data:           data,
+		templateCommon:     currentTemplateCommon(),
+		CurrentUser:        getSignedInAdminUserOrNil(r),
+		NotificationStatus: notificationStatusFor(getSignedInAdminUserOrNil(r)),
+		AllowSignups:       appConfig.AllowSignups,
+		Data:               data,
 	}
 
 	templatesDir := "templates/admin"
@@ -330,6 +333,10 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 			CustomPageCSS:          customPageCSS,
 			AdminUserID:            adminUser.ID,
 		}
+		if err := readGuestbookOptions(r, &newGuestbook); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		result := db.Create(&newGuestbook)
 		if result.Error != nil {
 			http.Error(w, "Error creating guestbook", http.StatusInternalServerError)
@@ -359,12 +366,25 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 		hostUrl = "//" + r.Host
 	}
 
+	emailTemplate, err := template.ParseFiles("templates/resources/email_field.html")
+	if err != nil {
+		http.Error(w, "Error loading email field template", http.StatusInternalServerError)
+		return
+	}
+	var emailField bytes.Buffer
+	if err := emailTemplate.ExecuteTemplate(&emailField, "email-field", guestbook); err != nil {
+		http.Error(w, "Error rendering email field", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
-		Guestbook     Guestbook
-		PublicHostUrl string
+		Guestbook      Guestbook
+		PublicHostUrl  string
+		EmailFieldHTML string
 	}{
-		Guestbook:     guestbook,
-		PublicHostUrl: hostUrl,
+		Guestbook:      guestbook,
+		PublicHostUrl:  hostUrl,
+		EmailFieldHTML: emailField.String(),
 	}
 
 	renderAdminTemplate(w, r, "embed_guestbook", data)
@@ -487,6 +507,10 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbook.ChallengeAnswer = challengeAnswer
 	guestbook.CustomPageCSS = customPageCSS
 
+	if err := readGuestbookOptions(r, &guestbook); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	result = db.Save(&guestbook)
 	if result.Error != nil {
 		http.Error(w, "Error updating guestbook", http.StatusInternalServerError)
@@ -837,53 +861,109 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 	currentUser := getSignedInAdminOrFail(r)
 
 	if r.Method == "GET" {
-		renderAdminTemplate(w, r, "user_settings", currentUser)
-	} else {
-		email := strings.TrimSpace(r.FormValue("email"))
-		notify := r.FormValue("notify") == "on"
-		displayName := strings.TrimSpace(r.FormValue("display_name"))
-
-		hasChangedEmail := currentUser.Email != email
-
-		currentUser.Email = email
-		currentUser.EmailNotifications = notify
-		currentUser.DisplayName = displayName
-
-		if hasChangedEmail {
-			newToken, err := generateAuthToken()
-			if err != nil {
-				http.Error(w, "Error updating user settings", http.StatusInternalServerError)
-				return
-			}
-
-			currentUser.EmailVerificationToken = newToken
-			currentUser.EmailVerified = false
-
-			go SendVerificationEmail(currentUser.Email, newToken)
+		notice := ""
+		switch r.URL.Query().Get("verification") {
+		case "sent":
+			notice = "Verification email requested. Check your inbox and follow the link to verify your address."
+		case "unavailable":
+			notice = "Settings saved, but no verification email was sent because email delivery is disabled on this instance."
 		}
+		renderUserSettings(w, r, currentUser, notice, "info", http.StatusOK)
+		return
+	}
 
-		result := db.Save(&currentUser)
-		if result.Error != nil {
-			http.Error(w, "Error updating user settings", http.StatusInternalServerError)
+	section := r.FormValue("settings_section")
+	if section != "" && section != "display_name" && section != "email" {
+		http.Error(w, "Unknown settings form", http.StatusBadRequest)
+		return
+	}
+	updatedUser := *currentUser
+	updates := map[string]any{}
+	if section == "" || section == "display_name" {
+		updatedUser.DisplayName = strings.TrimSpace(r.FormValue("display_name"))
+		updates["display_name"] = updatedUser.DisplayName
+	}
+	if section == "" || section == "email" {
+		updatedUser.Email = strings.TrimSpace(r.FormValue("email"))
+		updatedUser.EmailNotifications = r.FormValue("notify") == "on"
+		updates["email"] = updatedUser.Email
+		updates["email_notifications"] = updatedUser.EmailNotifications
+	}
+	hasChangedEmail := currentUser.Email != updatedUser.Email
+	if hasChangedEmail {
+		if _, err := optionalEmail(updatedUser.Email); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		updatedUser.EmailVerificationToken = ""
+		if updatedUser.Email != "" {
+			token, err := generateAuthToken()
+			if err != nil {
+				http.Error(w, "Error creating verification token", http.StatusInternalServerError)
+				return
+			}
+			updatedUser.EmailVerificationToken = token
+		}
+		updatedUser.EmailVerified = false
+		updates["email_verification_token"] = updatedUser.EmailVerificationToken
+		updates["email_verified"] = false
+	}
+	query := db.Model(&AdminUser{}).Where("id = ?", currentUser.ID)
+	if section == "" || section == "email" {
+		if currentUser.Email == "" {
+			query = query.Where("(email = '' OR email IS NULL)")
+		} else {
+			query = query.Where("email = ?", currentUser.Email)
+		}
+	}
+	result := query.Updates(updates)
+	if result.Error != nil {
+		http.Error(w, "Error updating user settings", http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected != 1 {
+		http.Error(w, "Your settings changed. Reload the page before trying again.", http.StatusConflict)
+		return
+	}
 
+	displayNameChanged := currentUser.DisplayName != updatedUser.DisplayName
+	*currentUser = updatedUser
+	if displayNameChanged {
 		// Update all existing replies by this user to use the new display name
 		newReplyName := currentUser.ReplyName()
-		db.Model(&Message{}).
+		result := db.Model(&Message{}).
 			Where("parent_message_id IS NOT NULL AND guestbook_id IN (?)",
 				db.Model(&Guestbook{}).Select("id").Where("admin_user_id = ?", currentUser.ID)).
 			Update("name", newReplyName)
+		if result.Error != nil {
+			http.Error(w, "Settings saved, but existing replies could not be updated", http.StatusInternalServerError)
+			return
+		}
 
 		// Invalidate cache for all guestbooks owned by this user
 		var userGuestbooks []Guestbook
-		db.Where("admin_user_id = ?", currentUser.ID).Find(&userGuestbooks)
+		if err := db.Where("admin_user_id = ?", currentUser.ID).Find(&userGuestbooks).Error; err != nil {
+			http.Error(w, "Settings saved, but guestbook caches could not be refreshed", http.StatusInternalServerError)
+			return
+		}
 		for _, g := range userGuestbooks {
 			messageCache.InvalidateGuestbook(g.ID)
 		}
-
-		http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
 	}
+	if hasChangedEmail && currentUser.Email != "" {
+		if !emailDeliveryEnabled() {
+			http.Redirect(w, r, "/admin/settings?verification=unavailable#settings-notice", http.StatusSeeOther)
+			return
+		}
+		if err := sendVerificationEmail(currentUser.Email, currentUser.EmailVerificationToken); err != nil {
+			log.Printf("Error sending verification for admin=%d: %v", currentUser.ID, err)
+			renderUserSettings(w, r, currentUser, "Settings saved, but the verification email could not be sent. Please try resending it.", "warning", http.StatusBadGateway)
+			return
+		}
+		http.Redirect(w, r, "/admin/settings?verification=sent#settings-notice", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
 }
 
 func AdminChangePassword(w http.ResponseWriter, r *http.Request) {

@@ -34,6 +34,7 @@ main {
 
 input[type="text"],
 input[type="url"],
+input[type="email"],
 textarea {
   width: 100%;
   box-sizing: border-box;

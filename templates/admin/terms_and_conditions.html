@@ -12,10 +12,25 @@
 <p>
     <i>Guestbooks</i> uses cookies to track who you are in the <code>/admin</code> pages, to know which
     <i>guestbooks</i> you own and prevent you from editing other users' data. We don't share this cookie information
-    with any other sites. We don't track no other information besides your account name and an encrypted version of your
-    password. We don't and will never sell/lend/exchange/peddle/auction nor in general give your data to anyone else. By
-    using the service you agree to cookies being used and the fact that we track basic information to allow site
-    functionality.
+    with any other sites. We store your account name, a password hash, and any account email address you provide
+    for verification, notifications, and password recovery. We also store your guestbook settings and visitors'
+    messages, names, and optional website addresses. Messages and website addresses become public when approved.
+    We do not sell personal data. By using the service you agree to cookies being used and this information being
+    stored to provide the service.
+</p>
+
+<p>
+    A guestbook owner can choose to collect optional visitor email addresses. These addresses are shown only
+    in the owner's authenticated dashboard, not in public guestbook pages, public APIs, or notification emails.
+    Leaving an address does not verify it or subscribe the visitor to notifications. The owner can use their own
+    email application to reply.
+</p>
+
+<p>
+    Private email addresses are stored in the service database and may be included in backups; they are not
+    encrypted from the hosting operator. Turning off collection stops saving new addresses but does not remove
+    previously collected ones. Message deletion uses soft deletion, so data can remain in the database and backups
+    until removed by the operator.
 </p>
 
 <p>

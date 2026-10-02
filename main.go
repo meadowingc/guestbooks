@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/viper"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,11 @@ import (
 
 var db *gorm.DB
 var messageCache *MessageCache
+var databaseLogger = logger.New(log.Default(), logger.Config{
+	LogLevel:             logger.Warn,
+	SlowThreshold:        200 * time.Millisecond,
+	ParameterizedQueries: true,
+})
 
 func main() {
 	viper.SetConfigName("config")
@@ -83,7 +89,7 @@ func main() {
 
 func initDatabase() {
 	var err error
-	db, err = gorm.Open(sqlite.Open("file:guestbook.db?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{})
+	db, err = gorm.Open(sqlite.Open("file:guestbook.db?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{Logger: databaseLogger})
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
@@ -173,6 +179,12 @@ func initRouter() *chi.Mux {
 		r.Get("/settings", AdminUserSettings)
 
 		r.Post("/settings", AdminUserSettings)
+		r.With(httprate.Limit(1, time.Minute,
+			httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
+				return strconv.FormatUint(uint64(getSignedInAdminOrFail(r).ID), 10), nil
+			}),
+			httprate.WithLimitHandler(AdminVerificationRateLimited),
+		)).Post("/settings/resend-verification", AdminResendVerification)
 		r.Post("/change-password", AdminChangePassword)
 
 		r.Get("/signin", AdminSignIn)
@@ -251,12 +263,23 @@ func initRouter() *chi.Mux {
 				}
 
 				templateData := struct {
-					Guestbook Guestbook
-					HostUrl   string
+					Guestbook  Guestbook
+					HostUrl    string
+					ConfigJSON string
 				}{
 					Guestbook: guestbook,
 					HostUrl:   hostUrl,
 				}
+				configJSON, err := json.Marshal(struct {
+					CollectEmail           bool   `json:"collectEmail"`
+					MaxEmailBytes          int    `json:"maxEmailBytes"`
+					ChallengeFailedMessage string `json:"challengeFailedMessage"`
+				}{guestbook.CollectEmail, maxEmailBytes, guestbook.ChallengeFailedMessage})
+				if err != nil {
+					http.Error(w, "Error rendering embed configuration", http.StatusInternalServerError)
+					return
+				}
+				templateData.ConfigJSON = string(configJSON)
 
 				w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 				template.Execute(w, templateData)

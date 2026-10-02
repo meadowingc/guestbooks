@@ -3,6 +3,42 @@
   var messagesContainer = document.getElementById(
     "guestbooks___guestbook-messages-container"
   );
+  var config = {{.ConfigJSON}};
+  var submitButtons = form.querySelectorAll("input[type='submit'], button[type='submit'], button:not([type])");
+  var submissionInFlight = false;
+  var powReady = {{if .Guestbook.PowEnabled}}false{{else}}true{{end}};
+  var resetPow = null;
+  var reloadRequested = false;
+
+  function updateSubmitState() {
+    submitButtons.forEach(function (button) {
+      button.disabled = submissionInFlight || !powReady;
+    });
+  }
+
+  function feedbackContainer(id, role) {
+    var container = form.querySelector("#" + id);
+    if (!container) {
+      container = document.createElement("div");
+      container.id = id;
+      form.appendChild(container);
+    }
+    container.setAttribute("role", role);
+    if (role === "status") container.setAttribute("aria-live", "polite");
+    container.style.whiteSpace = "pre-wrap";
+    return container;
+  }
+
+  var emailInput = form.querySelector("input[name='email']");
+  if (config.collectEmail && emailInput) {
+    function validateEmailLength() {
+      emailInput.setCustomValidity(new TextEncoder().encode(emailInput.value.trim()).length > config.maxEmailBytes
+        ? "Email address must contain at most " + config.maxEmailBytes + " bytes." : "");
+    }
+    emailInput.addEventListener("input", validateEmailLength);
+    validateEmailLength();
+  }
+  updateSubmitState();
 
   // paging state
   const pageSize = 20;
@@ -16,33 +52,52 @@
 
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
-
-    var formData = new FormData(form);
-    const response = await fetch(form.action, {
-      method: "POST",
-      body: formData,
-    });
-
-    let errorContainer = document.querySelector("#guestbooks___error-message");
-    if (!errorContainer) {
-      errorContainer = document.createElement("div");
-      errorContainer.id = "guestbooks___error-message";
-      const submitButton = document.querySelector("#guestbooks___guestbook-form input[type='submit']");
-      submitButton.insertAdjacentElement('afterend', errorContainer);
+    if (submissionInFlight) return;
+    var errorContainer = feedbackContainer("guestbooks___error-message", "alert");
+    var successContainer = feedbackContainer("guestbooks___success-message", "status");
+    errorContainer.textContent = "";
+    successContainer.textContent = "";
+    if (!powReady) {
+      errorContainer.textContent = "Please complete the verification before submitting.";
+      return;
     }
-
-    if (response.ok) {
-      form.reset();
-      guestbooks___loadMessages(true); // clear existing messages
-      errorContainer.innerHTML = "";
-    } else {
-      const err = await response.text();
-      console.error("Error:", err);
-      if (response.status === 401) {
-        errorContainer.innerHTML = "{{.Guestbook.ChallengeFailedMessage}}";
-      } else {
-        errorContainer.innerHTML = err;
+    submissionInFlight = true;
+    updateSubmitState();
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: new FormData(form),
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        console.error("Submission rejected:", response.status);
+        errorContainer.textContent = response.status === 401 && config.challengeFailedMessage
+          ? config.challengeFailedMessage : error || "Your message could not be submitted. Please try again.";
+        return;
       }
+      const result = await response.json();
+      if (!result || result.success !== true || typeof result.message !== "string" || typeof result.redirectUrl !== "string") {
+        throw new Error("Invalid submission response");
+      }
+      if (result.redirectUrl) {
+        const destination = new URL(result.redirectUrl);
+        if (destination.protocol !== "http:" && destination.protocol !== "https:") {
+          throw new Error("Invalid redirect response");
+        }
+        window.location.assign(destination.href);
+        return;
+      }
+      form.reset();
+      successContainer.textContent = result.message;
+      guestbooks___loadMessages(true);
+    } catch (error) {
+      console.error("Submission could not be confirmed:", error);
+      errorContainer.textContent = "Could not confirm whether your message was received. Check the guestbook before trying again.";
+    } finally {
+      if (resetPow) resetPow();
+      submissionInFlight = false;
+      updateSubmitState();
     }
   });
 
@@ -75,7 +130,10 @@
 
   function guestbooks___loadMessages(reset) {
     // Prevent multiple simultaneous requests
-    if (isLoading) return;
+    if (isLoading) {
+      if (reset) reloadRequested = true;
+      return;
+    }
 
     // Don't load if we've reached the end
     if (!hasMorePages && !reset) return;
@@ -192,10 +250,18 @@
         if (window.guestbooks___observeLastMessage) {
           window.guestbooks___observeLastMessage();
         }
+        if (reloadRequested) {
+          reloadRequested = false;
+          guestbooks___loadMessages(true);
+        }
       })
       .catch(function (error) {
         console.error("Error fetching messages:", error);
         isLoading = false;
+        if (reloadRequested) {
+          reloadRequested = false;
+          guestbooks___loadMessages(true);
+        }
       });
   }
 
@@ -235,11 +301,9 @@
   (function() {
     var powChallenge = "";
     var powNonce = "";
-    var powReady = false;
     var powWorker = null;
 
-    var submitBtn = form.querySelector("input[type='submit'], button[type='submit']");
-    submitBtn.disabled = true;
+    var submitBtn = submitButtons[0];
 
     // Build the verification UI: checkbox with inline label
     var powContainer = document.getElementById("guestbooks___pow-status");
@@ -321,7 +385,7 @@
       powReady = false;
       powChallenge = "";
       powNonce = "";
-      submitBtn.disabled = true;
+      updateSubmitState();
       powCheckbox.disabled = true;
       powLabelText.textContent = "Verifying\u2026";
       powLabelText.className = "guestbooks___pow-label-text--loading";
@@ -344,7 +408,7 @@
               powReady = true;
               hiddenChallenge.value = powChallenge;
               hiddenNonce.value = powNonce;
-              submitBtn.disabled = false;
+              updateSubmitState();
               powCheckbox.disabled = true;
               powLabelText.textContent = "Verified \u2713";
               powLabelText.className = "guestbooks___pow-label-text--verified";
@@ -369,16 +433,16 @@
       }
     });
 
-    // After form submission, reset the checkbox for the next message
-    form.addEventListener("submit", function() {
-      setTimeout(function() {
-        powCheckbox.checked = false;
-        powCheckbox.disabled = false;
-        powLabelText.textContent = "I\u2019m not a robot";
-        powLabelText.className = "";
-        submitBtn.disabled = true;
-      }, 500);
-    });
+    resetPow = function() {
+      powReady = false;
+      hiddenChallenge.value = "";
+      hiddenNonce.value = "";
+      powCheckbox.checked = false;
+      powCheckbox.disabled = false;
+      powLabelText.textContent = "I\u2019m not a robot";
+      powLabelText.className = "";
+      updateSubmitState();
+    };
   })();
   {{end}}
 })();

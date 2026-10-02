@@ -10,6 +10,33 @@
 
     {{if eq .CustomPageCSS ""}}
     <link rel="stylesheet" href="/assets/css/chota.min.css">
+    <style>
+        #guestbooks___guestbook-form .guestbooks___input-container {
+            margin-bottom: 1rem;
+        }
+        #guestbooks___email-help {
+            display: block;
+            margin-top: 0.4rem;
+        }
+        #guestbooks___success-message:not(:empty),
+        #guestbooks___error-message:not(:empty) {
+            margin: 1rem 0;
+            padding: 1rem 1.2rem;
+            border-inline-start: 0.3rem solid;
+            border-radius: 0.3rem;
+            overflow-wrap: anywhere;
+        }
+        #guestbooks___success-message {
+            color: #175e3b;
+            background: #edf8f1;
+            border-color: #218654;
+        }
+        #guestbooks___error-message {
+            color: #922b21;
+            background: #fff1ef;
+            border-color: #c0392b;
+        }
+    </style>
     {{ else if not (eq .SelectedBuiltInTheme "")}}
     <link rel="stylesheet" href="/assets/premade_styles/{{.SelectedBuiltInTheme}}">
     {{else}}
@@ -35,6 +62,7 @@
                     <div class="guestbooks___input-container">
                         <input placeholder="Website (optional)" type="url" id="website" name="website">
                     </div>
+                    {{template "email-field" .}}
                     <div id="guestbooks___challenge-answer-container"></div>
                     <br />
                     <div class="guestbooks___input-container">
@@ -45,6 +73,7 @@
                     <div id="guestbooks___pow-status"></div>
                     <input type="submit" value="Submit">
                     <div id="guestbooks___error-message"></div>
+                    <div id="guestbooks___success-message" role="status" aria-live="polite" style="white-space: pre-wrap;">{{.ConfirmationMessage}}</div>
                 </form>
             </div>
             <div id="guestbooks___guestbook-made-with" style="text-align: right;">

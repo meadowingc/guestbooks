@@ -1,0 +1,7 @@
+{{define "email-field"}}{{if .CollectEmail}}
+<div class="guestbooks___input-container">
+    <label for="email">{{.EmailFieldLabel}}</label>
+    <input type="email" id="email" name="email" maxlength="254"{{if .EmailFieldHelp}} aria-describedby="guestbooks___email-help"{{end}}>
+    {{if .EmailFieldHelp}}<small id="guestbooks___email-help">{{.EmailFieldHelp}}</small>{{end}}
+</div>
+{{end}}{{end}}
