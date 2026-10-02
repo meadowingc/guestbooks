@@ -144,7 +144,7 @@ func TestSubmissionFeedbackBrowserRealPoW(t *testing.T) {
 	}
 	t.Logf("Real browser worker solved difficulty %d in %s", constants.POW_DIFFICULTY, time.Since(started).Round(time.Millisecond))
 	clickGuestbookSubmit(page)
-	page.MustWait(`() => document.querySelector("#guestbooks___success-message").textContent === "Received."`)
+	page.MustWait(`() => document.querySelector("#guestbooks___success-message")?.textContent === "Received."`)
 	if powChallengeStore.VerifyPow(challenge, nonce, book.ID) {
 		t.Fatal("the saved submission did not consume its proof")
 	}
@@ -196,7 +196,7 @@ func TestSubmissionFeedbackBrowserNativeForm(t *testing.T) {
 			wait()
 			switch action {
 			case SubmissionUnchanged:
-				if page.MustElement("#guestbooks___success-message").MustText() != "" {
+				if page.MustHas("#guestbooks___success-message") {
 					t.Fatal("disabled feedback appeared on native submission")
 				}
 			case SubmissionMessage:
@@ -286,7 +286,7 @@ func TestPrivateEmailBrowserModerationJourney(t *testing.T) {
 	}
 	page.MustElement("input[name='challengeQuestionAnswer']").MustSelectAllText().MustInput("BLUE")
 	clickGuestbookSubmit(page)
-	page.MustWait(`() => document.querySelector("#guestbooks___success-message").textContent === "Awaiting approval."`)
+	page.MustWait(`() => document.querySelector("#guestbooks___success-message")?.textContent === "Awaiting approval."`)
 	if strings.Contains(page.MustElement("#guestbooks___guestbook-messages-container").MustText(), "Browser message") {
 		t.Fatal("pending message became public")
 	}

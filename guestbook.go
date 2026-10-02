@@ -85,6 +85,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		CollectEmail         bool
 		EmailFieldLabel      string
 		EmailFieldHelp       string
+		SubmissionAction     SubmissionAction
 		ConfirmationMessage  string
 	}{
 		templateCommon:       currentTemplateCommon(),
@@ -96,6 +97,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		CollectEmail:         guestbookData.CollectEmail,
 		EmailFieldLabel:      guestbookData.EmailFieldLabel,
 		EmailFieldHelp:       guestbookData.EmailFieldHelp,
+		SubmissionAction:     guestbookData.SubmissionAction,
 	}
 	if r.URL.Query().Get("submitted") == "1" && guestbookData.SubmissionAction == SubmissionMessage {
 		data.ConfirmationMessage = guestbookData.SubmissionMessage

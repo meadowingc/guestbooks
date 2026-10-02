@@ -9,11 +9,18 @@
   var powReady = {{if .Guestbook.PowEnabled}}false{{else}}true{{end}};
   var resetPow = null;
   var reloadRequested = false;
+  var previousSubmitStates = null;
 
   function updateSubmitState() {
-    submitButtons.forEach(function (button) {
-      button.disabled = submissionInFlight || !powReady;
-    });
+    if (submissionInFlight || !powReady) {
+      if (!previousSubmitStates) {
+        previousSubmitStates = Array.from(submitButtons, function (button) { return button.disabled; });
+      }
+      submitButtons.forEach(function (button) { button.disabled = true; });
+    } else if (previousSubmitStates) {
+      submitButtons.forEach(function (button, index) { button.disabled = previousSubmitStates[index]; });
+      previousSubmitStates = null;
+    }
   }
 
   function feedbackContainer(id, role) {
@@ -26,6 +33,7 @@
     container.setAttribute("role", role);
     if (role === "status") container.setAttribute("aria-live", "polite");
     container.style.whiteSpace = "pre-wrap";
+    container.hidden = false;
     return container;
   }
 
@@ -53,12 +61,15 @@
   form.addEventListener("submit", async function (event) {
     event.preventDefault();
     if (submissionInFlight) return;
-    var errorContainer = feedbackContainer("guestbooks___error-message", "alert");
-    var successContainer = feedbackContainer("guestbooks___success-message", "status");
-    errorContainer.textContent = "";
-    successContainer.textContent = "";
+    var errorContainer = form.querySelector("#guestbooks___error-message");
+    var successContainer = form.querySelector("#guestbooks___success-message");
+    if (errorContainer) errorContainer.textContent = "";
+    if (successContainer) {
+      successContainer.textContent = "";
+      successContainer.hidden = true;
+    }
     if (!powReady) {
-      errorContainer.textContent = "Please complete the verification before submitting.";
+      feedbackContainer("guestbooks___error-message", "alert").textContent = "Please complete the verification before submitting.";
       return;
     }
     submissionInFlight = true;
@@ -72,7 +83,7 @@
       if (!response.ok) {
         const error = await response.text();
         console.error("Submission rejected:", response.status);
-        errorContainer.textContent = response.status === 401 && config.challengeFailedMessage
+        feedbackContainer("guestbooks___error-message", "alert").textContent = response.status === 401 && config.challengeFailedMessage
           ? config.challengeFailedMessage : error || "Your message could not be submitted. Please try again.";
         return;
       }
@@ -89,11 +100,13 @@
         return;
       }
       form.reset();
-      successContainer.textContent = result.message;
+      if (result.message) {
+        feedbackContainer("guestbooks___success-message", "status").textContent = result.message;
+      }
       guestbooks___loadMessages(true);
     } catch (error) {
       console.error("Submission could not be confirmed:", error);
-      errorContainer.textContent = "Could not confirm whether your message was received. Check the guestbook before trying again.";
+      feedbackContainer("guestbooks___error-message", "alert").textContent = "Could not confirm whether your message was received. Check the guestbook before trying again.";
     } finally {
       if (resetPow) resetPow();
       submissionInFlight = false;

@@ -92,8 +92,8 @@
             <div class="card-body">
                 <h3>⚡ Custom JavaScript Embed</h3>
                 <p class="text-muted">
-                    Full control over the appearance. The JavaScript creates the form and loads messages, 
-                    but you style it to match your website perfectly.
+                    Full control over the appearance. The copied HTML defines your form; JavaScript handles
+                    submissions and loads messages. You style it to match your website.
                 </p>
                 
                 <div class="callout callout-info mb-3">
@@ -171,6 +171,15 @@
                     it is never inserted automatically. Keep it optional and use a UTF-8 page for labels in your language.
                     If you disable collection, remove the field from your copied HTML. Existing addresses remain in
                     your dashboard; newly submitted addresses are discarded while collection is disabled.
+                    Label and help changes also need to be copied into existing HTML.
+                </p>
+
+                <p class="text-small">
+                    Confirmation messages and redirects are different: changes in
+                    <a href="/admin/guestbook/{{.Data.Guestbook.ID}}/edit">guestbook settings</a>
+                    apply on the next submission, with no re-embedding required. The script adds a confirmation
+                    element only when there is text to show. Its appearance is controlled by your site's CSS
+                    using <code>#guestbooks___success-message</code>.
                 </p>
 
                 <div class="mt-3">
@@ -234,6 +243,8 @@
                         In an iframe, navigation stays inside the iframe; your destination must allow embedding.
                         URLs must resolve to HTTP(S), cannot contain embedded credentials, and are limited to 2,048 bytes.
                         Legacy relative URLs in this input resolve against the Guestbooks submission URL, not your site's URL.
+                        Existing JavaScript embeds with this input will now actually navigate; previously only
+                        the background request followed the redirect. Remove the input if you do not want navigation.
                     </p>
                 </div>
 

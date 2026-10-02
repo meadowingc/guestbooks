@@ -24,14 +24,39 @@ HTML; it is never injected into your existing layout. Disabling collection
 discards newly submitted email values but retains previously collected ones.
 Remove the field from copied HTML when you turn collection off.
 
-The default hosted theme highlights submission confirmations and errors.
+### Updating an existing JavaScript embed
+
+The standard embed loads its script from Guestbooks; the form HTML belongs
+to your website. You do not need to replace the entire embed when changing
+these settings:
+
+| Change in the dashboard | Update copied HTML? |
+| --- | --- |
+| Enable, edit, or disable a confirmation message | No. The next submission uses the saved setting; a notice is inserted only when there is text to show. |
+| Enable, change, or disable a redirect | No. The next submission uses the saved setting, unless a nonempty `redirect_to_url` input overrides it. |
+| Enable private email | Yes. Add the optional email field from the updated snippet; existing forms without it still work. |
+| Change the email label or help | Yes. Update that field's copied HTML. |
+| Disable private email | Remove the field from your HTML. Storage stops immediately even if an old form still sends an address. |
+
+Hosted pages and iframe forms pick up field/label changes on their next load.
+Self-hosted copies of the JavaScript source, rather than a script URL pointing
+to the updated Guestbooks service, must be updated separately.
+
+When feedback is enabled, the default hosted theme highlights confirmations and errors.
 Custom themes and JavaScript embeds keep their own styling; use
 `#guestbooks___success-message` and `#guestbooks___error-message` to style feedback.
+Without opting in, existing hosted form spacing and successful JavaScript
+submission layouts are unchanged.
 
 The existing hidden `redirect_to_url` input overrides the guestbook's
 post-submit setting, for both JavaScript and normal form submissions.
 Redirects inside an iframe stay inside that iframe; the destination must
 allow embedding. Redirect URLs are limited to 2,048 bytes.
+
+**Compatibility note:** a pre-existing `redirect_to_url` input now performs
+an actual browser navigation in JavaScript embeds. Previously it was followed
+only inside the background request. Remove that input if you want to keep
+visitors on the page.
 
 In **Settings → Email & Notifications**, add and verify your account email,
 then enable notifications. Moderated guestbooks show whether this setup is
