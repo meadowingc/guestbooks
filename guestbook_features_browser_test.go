@@ -291,8 +291,6 @@ func TestSubmissionFeedbackBrowserThemedFooter(t *testing.T) {
 	for _, theme := range []string{"default", "cherry-mint", "webcomic", "gray-bear", "gray-bear-dark", "cabernete", "peaceful-sky"} {
 		t.Run(theme, func(t *testing.T) {
 			_, book := featureFixture(t)
-			// Keep the title within 320px so overflow checks target form feedback.
-			book.WebsiteURL = "https://a.test"
 			book.SubmissionAction = SubmissionMessage
 			book.SubmissionMessage = "Merci !\nVotre message attend son approbation."
 			book.RequiresApproval = true
@@ -415,6 +413,42 @@ func TestPrivateEmailBrowserBuiltInThemes(t *testing.T) {
 				t.Fatalf("private email does not match other fields in %s at %dpx", theme, width)
 			}
 		}
+	}
+}
+
+func TestCherryMintBrowserLongTitle(t *testing.T) {
+	for _, action := range []SubmissionAction{SubmissionUnchanged, SubmissionMessage} {
+		t.Run("action="+string(action), func(t *testing.T) {
+			_, book := featureFixture(t)
+			book.CustomPageCSS = "<<built__in>>cherry-mint.css<</built__in>>"
+			book.SubmissionAction = action
+			book.SubmissionMessage = "Thank you!"
+			page, base := featureBrowser(t)
+			for _, website := range []string{"https://example.test", "https://" + strings.Repeat("a", 63) + ".test/" + strings.Repeat("b", 100)} {
+				book.WebsiteURL = website
+				if err := db.Save(&book).Error; err != nil {
+					t.Fatal(err)
+				}
+				for _, width := range []int{320, 390, 1200} {
+					page.MustSetViewport(width, 950, 1, false)
+					page.MustNavigate(base + fmt.Sprintf("/guestbook/%d", book.ID)).MustWaitLoad()
+					if page.MustElement("#title").MustText() != "Guestbook for "+website {
+						t.Fatal("heading text was truncated")
+					}
+					if !page.MustEval(`() => {
+						const title = document.querySelector("#title");
+						const range = document.createRange();
+						range.selectNodeContents(title);
+						const bounds = title.getBoundingClientRect();
+						return document.documentElement.scrollWidth <= innerWidth &&
+							Array.from(range.getClientRects()).every(rect =>
+								rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1);
+					}`).Bool() {
+						t.Errorf("Cherry Mint heading overflows at %dpx for %q", width, website)
+					}
+				}
+			}
+		})
 	}
 }
 

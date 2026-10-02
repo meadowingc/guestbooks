@@ -29,6 +29,7 @@ a:hover {
 h1 {
   text-align: center;
   color: #3c5832;
+  overflow-wrap: anywhere;
 }
 
 input[type="text"],

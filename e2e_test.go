@@ -479,7 +479,6 @@ func TestBulkDeleteMessages(t *testing.T) {
 		"Message 5 - Should remain",
 	}
 
-	var messageIDs []uint
 	for i, text := range messageTexts {
 		msg := Message{
 			Name:        fmt.Sprintf("User %d", i+1),
@@ -488,7 +487,6 @@ func TestBulkDeleteMessages(t *testing.T) {
 			Approved:    true,
 		}
 		db.Create(&msg)
-		messageIDs = append(messageIDs, msg.ID)
 	}
 
 	// Step 4: Navigate to admin panel for this guestbook
