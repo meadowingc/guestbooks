@@ -67,6 +67,7 @@
                 <a href="/guestbook/{{.Guestbook.ID}}" target="_blank" rel="noopener" class="btn btn-outline btn-sm">View public page</a>
                 <a href="/admin/guestbook/{{.Guestbook.ID}}/embed" class="btn btn-outline btn-sm">Get embed code</a>
                 <form action="/admin/guestbook/{{.Guestbook.ID}}/delete" method="post" style="display: inline; margin: 0;" onsubmit="return confirm('Are you sure you want to delete this guestbook? This action cannot be undone.');">
+                    {{$.CSRFField}}
                     <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                 </form>
             </div>

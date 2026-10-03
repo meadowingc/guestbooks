@@ -9,12 +9,15 @@ tasks:
   lint:
     # v0.14 removes this flag and requires Go 1.26.
     - go run github.com/nishanths/exhaustive/cmd/exhaustive@v0.13.0 -default-signifies-exhaustive ./...
-    - go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+    - go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
     - go vet ./...
 
   release:
-    deps: [tidy, lint, test, fmt]
     cmds:
+      - task: lint
+      - task: test
+      - go test -tags release -timeout 3m ./...
+      - go test -tags browser,release -timeout 5m ./...
       - go build -tags="release"
 
   tidy:
@@ -27,7 +30,22 @@ tasks:
       - task tidy
 
   test:
-    - go test -v -timeout 3m 
+    cmds:
+      - task: test-unit
+      - task: test-browser
+      - task: test-scripts
+
+  test-unit:
+    cmds:
+      - go test -timeout 3m ./...
+
+  test-browser:
+    cmds:
+      - go test -tags browser -timeout 5m ./...
+
+  test-scripts:
+    cmds:
+      - python3 -m unittest discover -s scripts -p 'test_*.py'
 
   run:
     - go run .

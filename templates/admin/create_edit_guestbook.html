@@ -18,6 +18,7 @@
     {{ end }}
 
     <form id="guestbook-edit-form" action="{{ $formActionUrl }}" method="post">
+        {{.CSRFField}}
         <div class="form-section">
             <h4>Basic Information</h4>
             
@@ -113,11 +114,16 @@
                     When enabled, visitors must check a verification checkbox before submitting a message.
                     Their browser then solves a small computational puzzle in the background.
                     This deters automated spam bots with minimal friction. Takes a few seconds on a normal device.
+                    Your site must use HTTPS (secure localhost development is supported).
                 </div>
             </div>
 
             <hr style="margin: 1em 0;">
 
+            <p id="challenge-settings-warning" class="callout callout-warning" role="alert" hidden>
+                Your saved verification question has no expected answer, so visitor submissions are blocked.
+                Enter an expected answer and save, or remove the question and save to disable it.
+            </p>
             <p class="text-small text-muted">
                 Set up a challenge question to prevent automated spam. Visitors will need to answer this question 
                 correctly to submit a message. For example: "What is my name?" or "Does water boil at 100°C?"
@@ -157,6 +163,7 @@
 
         <div class="form-section">
             <h4>Custom Styling</h4>
+            <p id="css-warning" class="callout callout-warning" role="alert" hidden></p>
             <div class="callout callout-info">
                 <p class="text-small">
                     <strong>💡 Pro tips:</strong> You can include custom fonts using <code>@font-face</code>. Feel free to edit the CSS of one of the build in themes in order to build your own!
@@ -177,13 +184,12 @@
             
             <div class="form-group">
                 <label for="customPageCSS">Custom CSS</label>
+                <p class="form-hint">Ordinary CSS, custom properties, media queries, and HTTPS font sources in <code>@font-face</code> are supported. External imports and other URLs are not allowed. Unsafe saved styles are blocked until you repair and save them; your CSS is not deleted.</p>
+                <p class="form-hint">Your current built-in theme is preserved when you save settings, even if its CSS preview has not loaded.</p>
                 <div class="css-editor-container">
                     <div class="code-section">
                         <div class="code-header">
                             <span class="code-label">CSS</span>
-                            <div class="action-group">
-                                <button type="button" class="btn btn-sm" onclick="formatCSS()">Format</button>
-                            </div>
                         </div>
                         <div class="css-editor-wrapper">
                             <textarea id="customPageCSS" name="customPageCSS" 
@@ -228,6 +234,22 @@
         collectEmail.addEventListener("change", updateOptions);
         updateOptions();
 
+        const challengeQuestion = document.getElementById("challengeQuestion");
+        const challengeAnswer = document.getElementById("challengeAnswer");
+        {{if $isEditing}}
+        document.getElementById("challenge-settings-warning").hidden =
+            !challengeQuestion.value.trim() || !!challengeAnswer.value.trim();
+        {{end}}
+        function validateChallengeSettings() {
+            const enabled = challengeQuestion.value.trim().length > 0;
+            challengeAnswer.required = enabled;
+            challengeAnswer.setCustomValidity(enabled && !challengeAnswer.value.trim()
+                ? "Enter an expected answer when a verification question is enabled." : "");
+        }
+        challengeQuestion.addEventListener("input", validateChallengeSettings);
+        challengeAnswer.addEventListener("input", validateChallengeSettings);
+        validateChallengeSettings();
+
         document.querySelectorAll("[data-character-limit], [data-byte-limit]").forEach(input => {
             function validateLength() {
                 const value = input.value.trim();
@@ -241,45 +263,51 @@
 
         const styleDropdown = document.getElementById("premadeStyles");
         const customCSSTextarea = document.getElementById("customPageCSS");
-        const styleCache = {};
+        const styleCache = new Map();
+        const warning = document.getElementById("css-warning");
+        let revision = 0;
+        let themeRequest = null;
         const serverSelectedTheme = "{{if $isEditing}}{{.Data.SelectedTheme}}{{end}}";
         if (serverSelectedTheme) {
             styleDropdown.value = serverSelectedTheme;
         }
 
-        // Detect currently selected theme by comparing textarea CSS to built-ins
-        function detectFromCSS() {
-            const current = customCSSTextarea.value.trim();
-            const options = Array.from(styleDropdown.querySelectorAll("option"))
-                .map(o => o.value)
-                .filter(v => v && v.startsWith('/assets/premade_styles/'));
-
-            Promise.all(
-                options.map(url => styleCache[url] ? Promise.resolve(styleCache[url]) : fetchAndCacheTheme(url))
-            ).then(() => {
-                for (const url of options) {
-                    if ((styleCache[url] || '').trim() === current) {
-                        styleDropdown.value = url;
-                        if (typeof updateHighlighting === 'function') updateHighlighting();
-                        break;
-                    }
+        function warn(message) {
+            warning.textContent = message;
+            warning.hidden = false;
+        }
+        async function loadTheme(url) {
+            const requestRevision = ++revision;
+            if (themeRequest) themeRequest.abort();
+            themeRequest = new AbortController();
+            try {
+                if (!Array.from(styleDropdown.options).some(option => option.value === url && !option.disabled)) {
+                    throw new Error("Unknown theme");
                 }
-            });
+                let data = styleCache.get(url);
+                if (data === undefined) {
+                    const response = await fetch(url, { signal: themeRequest.signal });
+                    if (!response.ok || response.redirected || !/^text\/css\b/i.test(response.headers.get("Content-Type") || "")) {
+                        throw new Error("Theme request failed");
+                    }
+                    data = await response.text();
+                    styleCache.set(url, data);
+                }
+                if (revision !== requestRevision) return;
+                customCSSTextarea.value = data;
+                styleDropdown.value = url;
+                warning.hidden = true;
+                if (typeof updateHighlighting === 'function') updateHighlighting();
+            } catch (error) {
+                if (error.name === "AbortError" || revision !== requestRevision) return;
+                warn("Could not load this theme. Your CSS has not changed. Select the theme again to retry.");
+            }
         }
-
-        // Function to fetch and cache theme data
-        function fetchAndCacheTheme(url) {
-            return fetch(url)
-                .then(response => response.text())
-                .then(data => {
-                    styleCache[url] = data; // Cache the fetched style
-                    return data;
-                })
-                .catch(error => {
-                    console.error("Error fetching the style:", error);
-                    return null;
-                });
-        }
+        customCSSTextarea.addEventListener("input", function () {
+            revision++;
+            if (themeRequest) themeRequest.abort();
+            styleDropdown.selectedIndex = 0;
+        });
 
         // Check if the current value of the textarea is a built-in theme reference
         const initialCSSValue = customCSSTextarea.value.trim();
@@ -290,56 +318,25 @@
             const themeName = match[1];
             const themeUrl = `/assets/premade_styles/${themeName}`;
 
-            fetchAndCacheTheme(themeUrl).then(data => {
-                if (data) {
-                    customCSSTextarea.value = data;
-                    styleDropdown.value = themeUrl;
-                    if (typeof updateHighlighting === 'function') updateHighlighting();
-                }
-            });
-        } else {
-            detectFromCSS();
+            loadTheme(themeUrl);
         }
-
         styleDropdown.addEventListener("change", function () {
-            const url = this.value;
-
-            if (styleCache[url]) {
-                customCSSTextarea.value = styleCache[url];
-                if (typeof updateHighlighting === 'function') updateHighlighting();
-            } else {
-                fetchAndCacheTheme(url).then(data => {
-                    if (data) {
-                        customCSSTextarea.value = data;
-                        if (typeof updateHighlighting === 'function') updateHighlighting();
-                    }
-                });
-            }
+            loadTheme(this.value);
         });
-
-
-        // CSS Editor
-        const cssTextarea = document.getElementById('customPageCSS');
-
-
-
+        {{if $isEditing}}
+        const checkRevision = revision;
+        fetch("/resources/css/guestbook/{{.Data.ID}}.css").then(response => {
+            if (revision !== checkRevision) return;
+            if (response.status === 422) {
+                warn("Your saved stylesheet is blocked because it contains unsafe or invalid CSS. It has not been deleted. Repair the CSS below and save to restore styling.");
+            } else if (!response.ok) {
+                warn("Could not check the saved stylesheet. Reload settings to retry; your CSS has not changed.");
+            }
+        }).catch(() => {
+            if (revision === checkRevision) warn("Could not check the saved stylesheet. Reload settings to retry; your CSS has not changed.");
+        });
+        {{end}}
     });
-
-    // Format CSS function
-    function formatCSS() {
-        const textarea = document.getElementById('customPageCSS');
-        let css = textarea.value;
-        
-        // Basic CSS formatting
-        css = css.replace(/\s*{\s*/g, ' {\n  ');
-        css = css.replace(/;\s*/g, ';\n  ');
-        css = css.replace(/\s*}\s*/g, '\n}\n\n');
-        css = css.replace(/\n\s*\n\s*\n/g, '\n\n');
-        css = css.trim();
-        
-        textarea.value = css;
-        
-    }
 </script>
 
 <style>

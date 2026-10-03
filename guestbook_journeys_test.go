@@ -1,3 +1,5 @@
+//go:build browser
+
 package main
 
 import (
@@ -19,9 +21,16 @@ import (
 )
 
 func submitBrowserForm(page *rod.Page, selector string) {
-	wait := page.MustWaitNavigation()
-	page.MustElement(selector + " [type='submit']").MustClick()
+	submit := page.MustElement(selector + " [type='submit']")
+	navigationPage, cancel := page.WithCancel()
+	defer cancel()
+	// WaitLoad alone can still observe the old document immediately after a click.
+	wait := navigationPage.EachEvent(func(event *proto.PageFrameNavigated) bool {
+		return event.Frame.ID == page.FrameID
+	})
+	submit.MustClick()
 	wait()
+	page.MustWaitLoad()
 }
 
 func TestNotificationStatusBrowserJourney(t *testing.T) {
@@ -74,6 +83,16 @@ func TestNotificationStatusBrowserJourney(t *testing.T) {
 	failDelivery.Store(false)
 	resendForm := "form[action='/admin/settings/resend-verification']"
 	submitBrowserForm(page, resendForm)
+	if !strings.Contains(page.MustElement("[role='status']").MustText(), "wait one minute") {
+		t.Fatal("failed send did not reserve the verification cooldown")
+	}
+	if len(deliveries) != 0 {
+		t.Fatal("cooldown after a failed send allowed another delivery request")
+	}
+	if err := db.Model(&saved).Update("verification_attempt_at", time.Now().Add(-2*time.Minute).Unix()).Error; err != nil {
+		t.Fatal(err)
+	}
+	submitBrowserForm(page, resendForm)
 	page.MustElement("[data-notification-state='unverified']")
 	if !strings.Contains(page.MustElement("[role='status']").MustText(), "Check your inbox") {
 		t.Fatal("resend did not show its success notice")
@@ -109,7 +128,8 @@ func TestNotificationStatusBrowserJourney(t *testing.T) {
 		}
 	}
 	page.MustNavigate(base + "/verify-email?token=" + url.QueryEscape(first.token)).MustWaitLoad()
-	if !strings.Contains(page.MustElement("body").MustText(), "Invalid token") {
+	status := page.MustEval(`url => fetch(url).then(response=>response.status)`, base+"/verify-email?token="+url.QueryEscape(first.token)).Int()
+	if status != http.StatusBadRequest || strings.Contains(page.MustElement("body").MustText(), "verified successfully") {
 		t.Fatal("verification link was reusable")
 	}
 }

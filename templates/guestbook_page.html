@@ -17,12 +17,10 @@
             margin-top: 0.4rem;
         }
     </style>
-    {{ else if not (eq .SelectedBuiltInTheme "")}}
+    {{else if .SelectedBuiltInTheme}}
     <link rel="stylesheet" href="/assets/premade_styles/{{.SelectedBuiltInTheme}}">
     {{else}}
-    <style>
-        {{.CustomPageCSS}}
-    </style>
+    <link rel="stylesheet" href="/resources/css/guestbook/{{.ID}}.css">
     {{end}}
     {{if $themedFeedback}}<link rel="stylesheet" href="/assets/css/guestbook-feedback.css">{{end}}
     {{if .ExtraHeadHTML}}{{.ExtraHeadHTML}}{{end}}
@@ -34,19 +32,22 @@
         <main>
             <h1 id="title">Guestbook for {{.WebsiteURL}}</h1>
 
-            <script async src="/resources/js/embed_script/{{.ID}}/script.js"></script>
+            <script defer src="/resources/js/embed_script/{{.ID}}/script.js"></script>
             <div id="guestbooks___guestbook-form-container">
                 <form id="guestbooks___guestbook-form" action="/guestbook/{{.ID}}/submit" method="post">
                     <div class="guestbooks___input-container">
+                        <label for="name">Name</label>
                         <input placeholder="Name" type="text" id="name" name="name" required>
                     </div>
                     <div class="guestbooks___input-container">
+                        <label for="website">Website (optional)</label>
                         <input placeholder="Website (optional)" type="url" id="website" name="website">
                     </div>
                     {{template "email-field" .}}
                     <div id="guestbooks___challenge-answer-container"></div>
                     <br />
                     <div class="guestbooks___input-container">
+                        <label for="text">Message</label>
                         <textarea placeholder="Message (plain text only)..." id="text" name="text" style="width: 100%; box-sizing: border-box; resize: vertical;"
                             required></textarea>
                     </div>

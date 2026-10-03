@@ -30,7 +30,9 @@ go build -tags release -o guestbooks .
 ```
 
 The server listens on `:6235` by default and prints its public URL on
-startup.
+startup. For a standalone binary behind a proxy on the same machine, set
+`server.bind_host: "127.0.0.1"` and explicitly trust the proxy as described
+below. Invalid configuration or an occupied listen port now prevents startup.
 
 ### Create systemd service
 
@@ -53,6 +55,7 @@ ExecStart=/path/to/guestbooks/binary
 
 Restart=always
 RestartSec=3
+TimeoutStopSec=40
 
 StandardOutput=journal
 StandardError=journal
@@ -94,6 +97,7 @@ $EDITOR config.yaml
 
 docker build -t guestbooks .
 docker run -d --name guestbooks \
+  --stop-timeout 40 \
   -p 6235:6235 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
   -v guestbooks-data:/app/data \
@@ -101,7 +105,20 @@ docker run -d --name guestbooks \
 ```
 
 The SQLite database lives in the `guestbooks-data` named volume so it
-survives container rebuilds.
+survives container rebuilds. Inside the container, leave `server.bind_host`
+empty (or use `0.0.0.0`), not `127.0.0.1`. When Caddy runs on the Docker host,
+publish with `-p 127.0.0.1:6235:6235` to prevent direct public access. Determine
+the actual Docker bridge peer before configuring trusted proxy CIDRs; do not
+trust every private address as a shortcut.
+
+Keep the container stop grace period at least 40 seconds. In Compose, use
+`stop_grace_period: 40s`. Docker's default 10 seconds can kill the process before
+its 30-second HTTP/mail drain finishes during a stop or restart.
+
+`./guestbooks healthcheck` probes `/healthz` using the configured bind address
+and port without starting another server or running migrations. Docker uses
+the same command, so a nondefault internal port is supported. Update the
+published port mapping separately.
 
 ## Configuration reference
 
@@ -112,6 +129,8 @@ Summary:
 |------------------------------|--------------------------|-------------------------------------------------------------------------|
 | `server.public_url`          | `http://localhost:PORT`  | Public origin used in emails and CSRF checks. **Set this in production.** |
 | `server.port`                | `6235`                   | HTTP listen port.                                                       |
+| `server.bind_host`           | `""`                     | Listen interface; use loopback behind a same-host proxy. |
+| `server.trusted_proxies`     | `[]`                     | Explicit peer CIDRs allowed to supply forwarded client IPs. |
 | `admin.allow_signups`        | `true`                   | When false, `/admin/signup` returns 404 (no new accounts can register). |
 | `branding.show_credits`      | `false`                  | Show maintainer footer credit, ko-fi link, "About" card.               |
 | `branding.support_url`       | `""`                     | Contact URL appended to notification emails.                            |
@@ -142,13 +161,25 @@ and password reset won't work, so it's strongly recommended to also set
 Account settings and moderated guestbooks display notification setup status.
 Owners need a saved, verified email address and notifications enabled.
 Changing an account email requires verification again. The resend button
-uses the saved address and is limited to one request per account per minute;
+uses the saved address. All verification attempts, including address changes,
+share one persisted attempt per account per minute;
 delivery-request failures are shown rather than reported as sent. Check
 the spam folder and your configured provider if verification does not arrive.
 An enabled status describes configuration, not guaranteed delivery.
+Changing an address during cooldown still saves the new address, but explicitly
+does not send an email; use Resend after the cooldown. Failed provider attempts
+also consume the cooldown. ACS accepts a full HTTPS resource origin or an
+existing bare hostname; no public URL, API key, recipient, or message body
+should be pasted into diagnostic output.
+SMTP requires STARTTLS (normally port 587), or uses implicit TLS on port 465.
+Provider requests have a 15-second deadline. A provider accepting an email
+request is not proof of final delivery; delivery failures are logged without
+recipient addresses, credentials, or bodies. Retry an ambiguous send with
+care to avoid duplicate mail.
 
 When the instance mailer is `none`, the UI explicitly reports that email
-delivery is unavailable. Debug builds also log new-message notifications
+delivery is unavailable. Debug builds log that notifications were skipped,
+without logging their bodies,
 instead of sending them; use the documented release build for deployment.
 
 Optional private visitor email collection is independent of outbound mail.
@@ -166,18 +197,96 @@ retention remain unchanged; protect database files and backups accordingly.
 
 ## Reverse proxy
 
-The app trusts `X-Forwarded-For` for client IP detection (used by the rate
-limiter). Make sure your proxy sets it.
+The app ignores forwarded IP headers by default. Configure only the actual
+proxy connection peers as trusted. For a same-host standalone deployment:
+
+```yaml
+server:
+  public_url: "https://guestbooks.example.com"
+  port: 6235
+  bind_host: "127.0.0.1"
+  trusted_proxies: ["127.0.0.1/32"]
+```
+
+If using IPv6 loopback, configure `::1` and `::1/128` consistently. Forwarded
+chains are parsed right-to-left through trusted peers, independent of comma
+spacing. Do not assume the leftmost value was set by a trusted proxy.
 
 ### Caddy
 
 ```caddy
 guestbooks.example.com {
-    reverse_proxy localhost:6235
+    reverse_proxy 127.0.0.1:6235
 }
 ```
 
-Caddy sets `X-Forwarded-For` automatically.
+Caddy sets `X-Forwarded-For` automatically and normally ignores incoming
+forwarding values from untrusted peers.
+
+### Cloudflare before Caddy
+
+Without explicit handling, Caddy can forward a Cloudflare edge IP instead of
+the visitor IP, grouping unrelated visitors into one rate-limit bucket.
+Configure both trust boundaries: Cloudflare to Caddy and Caddy to the app.
+
+For a Caddy instance shared with other applications, the following change is
+scoped to the guestbook site. Preserve that site's existing TLS directives;
+do not change unrelated sites or global trust rules.
+
+First fetch the official IPv4 and IPv6 lists from
+<https://www.cloudflare.com/ips/> and create an operator-reviewed Caddy snippet
+at `/etc/caddy/guestbooks-cloudflare-peers.caddy` containing **one `remote_ip`
+matcher with those CIDRs**. For example, generate a candidate for review:
+
+```bash
+curl --fail --silent --show-error https://www.cloudflare.com/ips-v4 > /tmp/guestbooks-cf-v4.txt
+curl --fail --silent --show-error https://www.cloudflare.com/ips-v6 > /tmp/guestbooks-cf-v6.txt
+{
+  printf 'remote_ip '
+  tr '\n' ' ' < /tmp/guestbooks-cf-v4.txt
+  printf ' '
+  tr '\n' ' ' < /tmp/guestbooks-cf-v6.txt
+  printf '\n'
+} > /tmp/guestbooks-cloudflare-peers.caddy
+```
+
+Check that both downloads succeeded, contain the published nonempty CIDR
+lists, and include no unexpected content before installing the candidate.
+Keep the last validated list until its replacement has been reviewed.
+
+```caddy
+guestbooks.example.com {
+    # Keep any TLS directive already required by your deployment here.
+    @cloudflare {
+        import /etc/caddy/guestbooks-cloudflare-peers.caddy
+        header CF-Connecting-IP *
+    }
+    handle @cloudflare {
+        reverse_proxy 127.0.0.1:6235 {
+            header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+        }
+    }
+    handle {
+        reverse_proxy 127.0.0.1:6235 {
+            header_up X-Forwarded-For {http.request.remote.host}
+        }
+    }
+}
+```
+
+Only Cloudflare connection peers can supply the visitor header. Direct
+requests, including ones with forged `CF-Connecting-IP`, use the actual peer.
+A missing Cloudflare visitor header also falls back to the actual peer.
+Never forward that header unconditionally. The app trusts only local Caddy,
+not Cloudflare addresses directly.
+
+Validate with the installed Caddy version before reloading:
+`caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`.
+Review updated Cloudflare ranges periodically using the same process. Check
+the installed Caddy version, any Cloudflare Workers/header transforms, and
+the origin firewall during rollout; the example does not alter them.
+Confirm externally that port 6235 is inaccessible. Do not apply a blanket
+firewall rule affecting other VPS services.
 
 ### nginx
 
@@ -234,14 +343,63 @@ go build -tags release -o guestbooks .
 The app runs `AutoMigrate` on startup so schema changes apply automatically.
 Always back up `guestbook.db` first.
 
+The session-expiry migration requires a fresh sign-in for existing sessions.
+Sessions have a 30-day absolute server-side maximum. Logout and password
+reset revoke old cookies; authenticated password changes rotate the cookie.
+Changing the recovery email/password invalidates outstanding reset links.
+Existing usernames are not renamed; exact legacy names remain usable and
+ambiguous whitespace-normalized names are not guessed.
+
+Admin automation must obtain a CSRF cookie and the `X-CSRF-Token` response
+header from a protected GET and return both on mutations. Browser forms do
+this automatically. After an application restart, reload an old form to
+refresh its CSRF token. Visitor POSTs and public embeds remain cross-origin.
+
+Deleting a guestbook now soft-deletes its messages; deleting a parent also
+soft-deletes its replies. Historical orphaned content is hidden immediately
+but is not automatically purged. Use the explicit repair workflow below.
+
+For a production upgrade, preserve the previous binary/configuration and a
+consistent database backup. Apply the loopback binding, explicit proxy trust,
+and guestbook-only Caddy configuration together. Check health, fresh sign-in,
+submission, moderation, and visitor-IP behavior using controlled requests.
+Use an operator-owned recipient only with explicit approval for a mail check.
+Older binaries reintroduce the old security/visibility behavior: rollback
+must consider data/schema compatibility and may require restoring the backup.
+
 ## Operational helpers
 
 The `scripts/` directory has a couple of maintenance scripts:
 
 - `reset_user_password.py` — reset a user's password directly in the DB.
 - `hard_delete_all_data_for_username.py` — GDPR-style account purge.
+- `repair_orphaned_data.py` — report historical orphaned descendants and,
+  only when explicitly requested, soft-delete them.
 
 Run them while the server is **stopped** to avoid SQLite lock contention.
+The password-reset helper requires Python 3 and bcrypt; install
+`scripts/requirements.txt` in a virtual environment rather than modifying
+the operating system's Python packages.
+Use `--database /absolute/path/to/guestbook.db` to avoid operating on the wrong
+working-directory database. They open an existing database, not a new empty
+one. Password resets revoke sessions and recovery links. Purges include
+soft-deleted guestbooks and messages and require confirmation.
+
+Hard deletion removes database records, not existing backups or guaranteed
+forensic remnants in SQLite/WAL. Maintain a separate backup-retention policy.
+Content left by a historical broken purge may have lost its ownership link;
+do not assume it can still be attributed to a username.
+
+With the service stopped and a consistent backup saved, preview historical
+repair first:
+
+```bash
+python3 scripts/repair_orphaned_data.py --database /absolute/path/to/guestbook.db
+```
+
+Review the affected counts/IDs before using the command's `--apply` option
+and confirming the change. Repair soft-deletes orphaned descendants; it does
+not physically erase their records or modify existing backups.
 
 ## Reporting issues
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -78,14 +79,15 @@ func (cs *ChallengeStore) VerifyPow(challenge, nonce string, guestbookID uint) b
 		cs.mu.Unlock()
 		return false
 	}
-	// Consume the challenge so it can't be reused
-	delete(cs.challenges, challenge)
-	cs.mu.Unlock()
-
 	// Verify the proof of work: SHA-256(challenge + nonce) must have
 	// POW_DIFFICULTY leading zero bits.
 	hash := sha256.Sum256([]byte(challenge + nonce))
-	return hasLeadingZeroBits(hash[:], constants.POW_DIFFICULTY)
+	valid := hasLeadingZeroBits(hash[:], constants.POW_DIFFICULTY)
+	if valid {
+		delete(cs.challenges, challenge)
+	}
+	cs.mu.Unlock()
+	return valid
 }
 
 // hasLeadingZeroBits checks whether the byte slice has at least n leading zero bits.
@@ -125,14 +127,22 @@ func (cs *ChallengeStore) CleanupExpired() {
 }
 
 // StartCleanupLoop runs CleanupExpired every 5 minutes in the background.
-func (cs *ChallengeStore) StartCleanupLoop() {
+func (cs *ChallengeStore) StartCleanupLoop(ctx context.Context) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-		for range ticker.C {
-			cs.CleanupExpired()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cs.CleanupExpired()
+			}
 		}
 	}()
+	return done
 }
 
 // Global challenge store, initialized in main().
@@ -144,9 +154,9 @@ func PowChallengeHandler(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 
 	var guestbook Guestbook
-	result := db.First(&guestbook, guestbookID)
+	result := activeGuestbooksQuery(db.WithContext(r.Context())).First(&guestbook, "guestbooks.id = ?", guestbookID)
 	if result.Error != nil {
-		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		recordLookupError(w, result.Error, "Guestbook")
 		return
 	}
 

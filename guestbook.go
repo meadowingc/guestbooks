@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	texttemplate "text/template"
 	"time"
 
 	"html/template"
@@ -15,24 +19,23 @@ import (
 	"guestbook/constants"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 )
 
-var guestbookTemplate *template.Template = loadGuestbookTemplate()
+var (
+	guestbookTemplate     *template.Template
+	guestbookTemplateErr  error
+	guestbookTemplateOnce sync.Once
+)
 
 func formatDate(t time.Time) string {
 	return t.Format("Jan 2, 2006")
 }
 
-func loadGuestbookTemplate() *template.Template {
-	tmpl, err := template.New("guestbook_page.html").Funcs(template.FuncMap{
+func loadGuestbookTemplate() (*template.Template, error) {
+	return template.New("guestbook_page.html").Funcs(template.FuncMap{
 		"formatDate": formatDate,
 	}).ParseFiles("templates/guestbook_page.html", "templates/resources/email_field.html")
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return tmpl
 }
 
 func GuestbookPage(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +53,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var guestbookData GuestbookPageData
-	result := db.Model(&Guestbook{}).
+	result := activeGuestbooksQuery(db.WithContext(r.Context())).
 		Select("website_url, custom_page_css, pow_enabled, submission_action, submission_message, collect_email, email_field_label, email_field_help").
 		Where("id = ?", guestbookID).
 		Scan(&guestbookData)
@@ -65,21 +68,29 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var pageTemplate *template.Template
+	var templateErr error
 	if constants.DEBUG_MODE {
-		guestbookTemplate = loadGuestbookTemplate()
+		pageTemplate, templateErr = loadGuestbookTemplate()
+	} else {
+		guestbookTemplateOnce.Do(func() {
+			guestbookTemplate, guestbookTemplateErr = loadGuestbookTemplate()
+		})
+		pageTemplate, templateErr = guestbookTemplate, guestbookTemplateErr
+	}
+	if templateErr != nil {
+		log.Printf("Load guestbook template: %v", templateErr)
+		http.Error(w, "Guestbook page temporarily unavailable", http.StatusInternalServerError)
+		return
 	}
 
-	selectedBuiltInTheme := ""
-	if strings.HasPrefix(guestbookData.CustomPageCSS, "<<built__in>>") {
-		selectedBuiltInTheme = strings.TrimPrefix(guestbookData.CustomPageCSS, "<<built__in>>")
-		selectedBuiltInTheme = strings.TrimSuffix(selectedBuiltInTheme, "<</built__in>>")
-	}
+	selectedBuiltInTheme, _ := validBuiltInTheme(guestbookData.CustomPageCSS)
 
 	data := struct {
 		templateCommon
 		ID                   string
 		WebsiteURL           string
-		CustomPageCSS        template.CSS
+		CustomPageCSS        string
 		SelectedBuiltInTheme string
 		PowEnabled           bool
 		CollectEmail         bool
@@ -91,7 +102,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		templateCommon:       currentTemplateCommon(),
 		ID:                   guestbookID,
 		WebsiteURL:           guestbookData.WebsiteURL,
-		CustomPageCSS:        template.CSS(guestbookData.CustomPageCSS),
+		CustomPageCSS:        guestbookData.CustomPageCSS,
 		SelectedBuiltInTheme: selectedBuiltInTheme,
 		PowEnabled:           guestbookData.PowEnabled,
 		CollectEmail:         guestbookData.CollectEmail,
@@ -103,7 +114,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		data.ConfirmationMessage = guestbookData.SubmissionMessage
 	}
 
-	err := guestbookTemplate.Execute(w, data)
+	err := pageTemplate.Execute(w, data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -113,23 +124,52 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 
 	var guestbook Guestbook
-	result := db.First(&guestbook, guestbookID)
+	result := activeGuestbooksQuery(db.WithContext(r.Context())).First(&guestbook, "guestbooks.id = ?", guestbookID)
 	if result.Error != nil {
-		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		recordLookupError(w, result.Error, "Guestbook")
 		return
 	}
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
-		http.Error(w, "Invalid submission form", http.StatusBadRequest)
+	limitedBody := http.MaxBytesReader(w, r.Body, maxSubmissionBytes)
+	defer limitedBody.Close()
+	body, readErr := io.ReadAll(limitedBody)
+	var bodyLimit *http.MaxBytesError
+	if errors.As(readErr, &bodyLimit) {
+		http.Error(w, "Submission body exceeds 64 KiB", http.StatusRequestEntityTooLarge)
 		return
+	}
+	if readErr != nil {
+		http.Error(w, "Unable to read submission body", http.StatusBadRequest)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	parseErr := r.ParseForm()
+	if parseErr == nil {
+		parseErr = r.ParseMultipartForm(maxSubmissionBytes)
 	}
 	if r.MultipartForm != nil {
 		defer r.MultipartForm.RemoveAll()
 	}
+	if errors.As(parseErr, &bodyLimit) {
+		http.Error(w, "Submission body exceeds 64 KiB", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if parseErr != nil && !errors.Is(parseErr, http.ErrNotMultipart) {
+		http.Error(w, "Invalid submission form", http.StatusBadRequest)
+		return
+	}
+	if r.MultipartForm != nil && len(r.MultipartForm.File) != 0 {
+		http.Error(w, "File uploads are not supported", http.StatusBadRequest)
+		return
+	}
 
 	name := strings.TrimSpace(r.FormValue("name"))
-	text := strings.TrimSpace(r.FormValue("text"))
+	text := normalizedMessageText(r.FormValue("text"))
 	website := strings.TrimSpace(r.FormValue("website"))
+	if err := messageInputError(name, text, website); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	var websitePtr *string
 	if website != "" {
 		websitePtr = &website
@@ -143,8 +183,9 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if len(text) > constants.MAX_MESSAGE_LENGTH {
-		http.Error(w, "Message is too long, maximum length is "+fmt.Sprint(constants.MAX_MESSAGE_LENGTH)+" characters", http.StatusBadRequest)
+	if err := challengeSettingsError(guestbook.ChallengeQuestion, guestbook.ChallengeAnswer); err != nil {
+		log.Printf("Invalid challenge configuration for guestbook=%d", guestbook.ID)
+		http.Error(w, "This guestbook's verification settings need to be repaired by its owner.", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -186,7 +227,7 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		expectedChallengeAnswer := strings.TrimSpace(guestbook.ChallengeAnswer)
 		expectedChallengeAnswer = strings.ToLower(expectedChallengeAnswer)
 
-		if expectedChallengeAnswer != "" && expectedChallengeAnswer != challengeQuestionAnswer {
+		if expectedChallengeAnswer != challengeQuestionAnswer {
 			http.Error(w, "The provided answer to the challenge question is invalid!", http.StatusUnauthorized)
 			return
 		}
@@ -210,9 +251,25 @@ func GuestbookSubmit(w http.ResponseWriter, r *http.Request) {
 		GuestbookID: guestbook.ID,
 		Approved:    !guestbook.RequiresApproval,
 	}
-	result = db.Create(&message)
-	if result.Error != nil {
-		http.Error(w, "Error submitting message", http.StatusInternalServerError)
+	saveErr := writeTransaction(db.WithContext(r.Context()), func(tx *gorm.DB) error {
+		var count int64
+		if err := activeGuestbooksQuery(tx).Where("id = ?", guestbook.ID).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Create(&message).Error
+	})
+	if saveErr != nil {
+		log.Printf("Save submission for guestbook=%d: %v", guestbook.ID, saveErr)
+		if guestbook.PowEnabled {
+			w.Header().Set("X-Guestbooks-Fresh-Proof", "true")
+			http.Error(w, "Error submitting message. Complete a fresh verification before retrying.", http.StatusInternalServerError)
+		} else {
+			http.Error(w, "Error submitting message", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -256,14 +313,11 @@ func notifyGuestbookOwner(guestbook Guestbook, message Message, adminUser AdminU
 		return err
 	}
 	if constants.DEBUG_MODE {
-		fmt.Println("In debug mode, not sending email:")
-		fmt.Println(body)
+		log.Printf("Debug mode: notification for guestbook=%d message=%d not sent", guestbook.ID, message.ID)
 	} else {
-		go func() {
-			if err := SendMail([]string{adminUser.Email}, "[Guestbooks] New message on guestbook '"+guestbook.WebsiteURL+"'", body); err != nil {
-				log.Printf("Error sending notification for guestbook=%d message=%d: %v", guestbook.ID, message.ID, err)
-			}
-		}()
+		return queueMail(fmt.Sprintf("notification for guestbook=%d message=%d", guestbook.ID, message.ID), func(ctx context.Context) error {
+			return SendMailContext(ctx, []string{adminUser.Email}, "[Guestbooks] New message on guestbook '"+guestbook.WebsiteURL+"'", body)
+		})
 	}
 	return nil
 }
@@ -318,7 +372,7 @@ If you do need some help then please reach out through here {{.SupportURL}}{{end
 		`
 
 	// Parse and execute the template
-	t, err := template.New("email").Parse(tmpl)
+	t, err := texttemplate.New("email").Parse(tmpl)
 	if err != nil {
 		return "", err
 	}

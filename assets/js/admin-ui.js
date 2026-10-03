@@ -1,11 +1,29 @@
 // Admin UI Enhancements
 document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+    async function confirmMutation(response, expectedText) {
+        if (response.status === 401 || response.redirected) {
+            throw new Error('Your session has expired. Sign in again before retrying; displayed messages have not been changed.');
+        }
+        if (response.status === 403) {
+            throw new Error('This form has expired. Reload the page and sign in if needed before retrying.');
+        }
+        const type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        if (!response.ok) throw new Error('The operation failed. Your selection has been preserved; please try again.');
+        if (type === 'text/plain') {
+            if ((await response.text()).trim() === expectedText) return;
+        } else if (type === 'application/json') {
+            const result = await response.json();
+            if (result && result.success === true) return;
+        }
+        throw new Error('Unexpected server response. No local changes were made; sign in again or reload before retrying.');
+    }
     
     // Bulk message actions functionality
     const messagesContainer = document.getElementById('messages-container');
     if (messagesContainer) {
         const selectAllCheckbox = document.getElementById('select-all-messages');
-        const messageCheckboxes = document.querySelectorAll('.message-checkbox');
+        const messageCheckboxes = () => messagesContainer.querySelectorAll('.message-checkbox');
         const bulkActions = document.getElementById('bulk-actions');
         const selectedCountSpan = document.getElementById('selected-count');
         const bulkApproveBtn = document.getElementById('bulk-approve-btn');
@@ -16,6 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update UI based on selection
         function updateBulkActionsUI() {
+            selectedMessageIds = new Set(Array.from(messageCheckboxes()).filter(checkbox => checkbox.checked).map(checkbox => checkbox.dataset.messageId));
             const count = selectedMessageIds.size;
             if (count > 0) {
                 bulkActions.style.display = 'block';
@@ -26,23 +45,23 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Update select all checkbox state
             if (selectAllCheckbox) {
-                selectAllCheckbox.checked = count === messageCheckboxes.length && count > 0;
-                selectAllCheckbox.indeterminate = count > 0 && count < messageCheckboxes.length;
+                selectAllCheckbox.checked = count === messageCheckboxes().length && count > 0;
+                selectAllCheckbox.indeterminate = count > 0 && count < messageCheckboxes().length;
             }
         }
         
         // Handle individual checkbox change
-        messageCheckboxes.forEach(checkbox => {
+        messageCheckboxes().forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 const messageId = this.getAttribute('data-message-id');
-                const messageCard = this.closest('.message-card');
+                const messageCard = this.closest('.message-row');
                 
                 if (this.checked) {
                     selectedMessageIds.add(messageId);
                     messageCard.style.background = 'var(--primary-light)';
                 } else {
                     selectedMessageIds.delete(messageId);
-                    messageCard.style.background = 'var(--gray-50)';
+                    messageCard.style.background = messageCard.classList.contains('message-reply') ? 'var(--gray-100)' : 'var(--gray-50)';
                 }
                 
                 updateBulkActionsUI();
@@ -54,17 +73,17 @@ document.addEventListener('DOMContentLoaded', function() {
             selectAllCheckbox.addEventListener('change', function() {
                 const isChecked = this.checked;
                 
-                messageCheckboxes.forEach(checkbox => {
+                messageCheckboxes().forEach(checkbox => {
                     checkbox.checked = isChecked;
                     const messageId = checkbox.getAttribute('data-message-id');
-                    const messageCard = checkbox.closest('.message-card');
+                    const messageCard = checkbox.closest('.message-row');
                     
                     if (isChecked) {
                         selectedMessageIds.add(messageId);
                         messageCard.style.background = 'var(--primary-light)';
                     } else {
                         selectedMessageIds.delete(messageId);
-                        messageCard.style.background = 'var(--gray-50)';
+                        messageCard.style.background = messageCard.classList.contains('message-reply') ? 'var(--gray-100)' : 'var(--gray-50)';
                     }
                 });
                 
@@ -83,20 +102,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 const messageIds = Array.from(selectedMessageIds);
 
                 bulkApproveBtn.disabled = true;
+                bulkDeleteBtn.disabled = true;
                 bulkApproveBtn.innerHTML = '<span class="spinner"></span> Approving...';
 
                 fetch(`/admin/guestbook/${guestbookId}/messages/bulk-approve`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': csrfToken,
                     },
                     body: JSON.stringify({ message_ids: messageIds })
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to approve messages');
-                    }
-
+                .then(response => confirmMutation(response, 'Messages approved successfully'))
+                .then(() => {
                     if (window.showToast) {
                         window.showToast(`Successfully approved ${count} message${count !== 1 ? 's' : ''}`, 'success');
                     }
@@ -108,9 +127,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 .catch(error => {
                     console.error('Error:', error);
                     if (window.showToast) {
-                        window.showToast('Failed to approve messages. Please try again.', 'error');
+                        window.showToast(error.message, 'error');
                     }
                     bulkApproveBtn.disabled = false;
+                    bulkDeleteBtn.disabled = false;
                     bulkApproveBtn.innerHTML = 'Approve Selected';
                 });
             });
@@ -151,7 +171,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 dialog.innerHTML = `
                     <h3 style="margin-top: 0; color: var(--error-color);">⚠️ Confirm Bulk Deletion</h3>
-                    <p style="color: var(--gray-700);">Are you sure you want to delete <strong>${count} message${count !== 1 ? 's' : ''}</strong>? This action cannot be undone.</p>
+                    <p style="color: var(--gray-700);">Are you sure you want to delete <strong>${count} selected message${count !== 1 ? 's' : ''}</strong>? Deleting a parent also deletes all its replies. This action cannot be undone.</p>
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
                         <button class="btn btn-outline" id="cancel-bulk-delete">Cancel</button>
                         <button class="btn btn-danger" id="confirm-bulk-delete">Delete ${count} Message${count !== 1 ? 's' : ''}</button>
@@ -174,23 +194,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     
                     // Show loading state
                     bulkDeleteBtn.disabled = true;
+                    bulkApproveBtn.disabled = true;
                     bulkDeleteBtn.innerHTML = '<span class="spinner"></span> Deleting...';
                     
                     fetch(`/admin/guestbook/${guestbookId}/messages/bulk-delete`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-Token': csrfToken,
                         },
                         body: JSON.stringify({ message_ids: messageIds })
                     })
-                    .then(response => {
-                        if (response.ok) {
+                    .then(response => confirmMutation(response, 'Messages deleted successfully'))
+                    .then(() => {
                             // Remove deleted messages from DOM
                             messageIds.forEach(id => {
-                                const messageCard = document.querySelector(`.message-card[data-message-id="${id}"]`);
+                                const messageCard = messagesContainer.querySelector(`.message-row[data-message-id="${id}"]`);
                                 if (messageCard) {
                                     messageCard.style.animation = 'fadeOut 0.3s ease';
-                                    setTimeout(() => messageCard.remove(), 300);
+                                    messageCard.remove();
                                 }
                             });
                             
@@ -200,23 +223,21 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             // Show success message
                             if (window.showToast) {
-                                window.showToast(`Successfully deleted ${count} message${count !== 1 ? 's' : ''}`, 'success');
+                                window.showToast(`Deleted ${count} selected message${count !== 1 ? 's' : ''} and any replies to selected parents.`, 'success');
                             }
                             
                             // Reload page after animation
                             setTimeout(() => {
                                 window.location.reload();
                             }, 1000);
-                        } else {
-                            throw new Error('Failed to delete messages');
-                        }
                     })
                     .catch(error => {
                         console.error('Error:', error);
                         if (window.showToast) {
-                            window.showToast('Failed to delete messages. Please try again.', 'error');
+                            window.showToast(error.message, 'error');
                         }
                         bulkDeleteBtn.disabled = false;
+                        bulkApproveBtn.disabled = false;
                         bulkDeleteBtn.innerHTML = 'Delete Selected';
                     });
                 };
@@ -231,6 +252,17 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    document.querySelectorAll('[data-character-limit], [data-byte-limit]').forEach(input => {
+        function validateLength() {
+            const value = input.value.trim();
+            const limit = Number(input.dataset.characterLimit || input.dataset.byteLimit);
+            const length = input.dataset.characterLimit ? Array.from(value).length : new TextEncoder().encode(value).length;
+            input.setCustomValidity(length > limit ? `Use at most ${limit} ${input.dataset.characterLimit ? 'characters' : 'bytes'}.` : '');
+        }
+        input.addEventListener('input', validateLength);
+        validateLength();
+    });
+
     // Add fade-in animation to cards
     const cards = document.querySelectorAll('.card, .guestbook-card');
     cards.forEach((card, index) => {
@@ -332,7 +364,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             dialog.innerHTML = `
                 <h3 style="margin-top: 0; color: var(--error-color);">⚠️ Confirm Deletion</h3>
-                <p style="color: var(--gray-700);">Are you sure you want to delete this? This action cannot be undone.</p>
+                <p style="color: var(--gray-700);">Are you sure you want to delete this? Deleting a guestbook or parent message also deletes its replies. This action cannot be undone.</p>
                 <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
                     <button class="btn btn-outline" id="cancel-btn">Cancel</button>
                     <button class="btn btn-danger" id="confirm-btn">Delete</button>
@@ -419,7 +451,6 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('input', function() {
             const password = input.value;
             let strength = 0;
-            let feedback = [];
             
             if (password.length >= 8) strength++;
             if (password.length >= 12) strength++;
@@ -429,6 +460,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             const strengthLevels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
             const strengthColors = ['var(--error-color)', 'var(--warning-color)', '#F59E0B', '#10B981', 'var(--success-color)'];
+            strength = Math.min(strength, strengthLevels.length - 1);
             
             if (password.length > 0) {
                 strengthIndicator.innerHTML = `
@@ -480,7 +512,11 @@ window.showToast = function(message, type = 'info') {
         animation: slideIn 0.3s ease;
         cursor: pointer;
     `;
-    toast.innerHTML = `<p style="margin: 0;">${message}</p>`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    const text = document.createElement('p');
+    text.style.margin = '0';
+    text.textContent = message;
+    toast.appendChild(text);
     
     document.body.appendChild(toast);
     

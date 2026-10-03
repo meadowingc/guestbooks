@@ -16,6 +16,15 @@ server:
   # with a reverse proxy (nginx, Caddy) that terminates TLS.
   port: 6235
 
+  # Empty preserves all-interface binding (including Docker). For a standalone
+  # binary behind a proxy on this host, set "127.0.0.1".
+  bind_host: ""
+
+  # Forwarded IPs are ignored unless the actual connection peer is trusted.
+  # With a local Caddy proxy and loopback binding, use ["127.0.0.1/32"].
+  # Do not trust all private networks or arbitrary client-supplied headers.
+  trusted_proxies: []
+
 admin:
   # If false, the /admin/signup routes are disabled (return 404) and the
   # "Sign Up" button is hidden. Recommended workflow for a single-tenant
@@ -67,6 +76,7 @@ mailer:
     from_email: "Guestbooks <no-reply@example.com>"
 
   azure_communication_service:
+    # A full HTTPS origin is preferred; existing bare hostnames also work.
     host: https://your-acs-resource.communication.azure.com/
     key: your-acs-access-key
     from_email: DoNotReply@notifications.example.com

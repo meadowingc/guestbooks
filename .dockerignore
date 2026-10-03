@@ -19,6 +19,8 @@ config.yaml
 guestbooks
 guestbook
 /out
+.venv
+**/__pycache__
 
 # Editor / OS junk
 .vscode

@@ -8,16 +8,17 @@
 <p class="private-email"><small>Private email &middot; only visible to you</small><a href="{{.Data.EmailLink}}">{{.Data.Email}}</a></p>
 {{end}}
 <form action="/admin/guestbook/{{.Data.GuestbookID}}/message/{{.Data.ID}}/edit" method="post">
+    {{.CSRFField}}
     <label for="name">Name:</label>
-    <input type="text" id="name" name="name" value="{{.Data.Name}}" required>
+    <input type="text" id="name" name="name" value="{{.Data.Name}}" data-character-limit="200" required>
     <label for="website">Website (optional):</label>
-    <input type="url" id="website" name="website" value="{{if .Data.Website}}{{.Data.Website}}{{end}}">
+    <input type="url" id="website" name="website" value="{{if .Data.Website}}{{.Data.Website}}{{end}}" data-byte-limit="2048">
     <label for="isApproved">Is message approved:</label>
     <input type="checkbox" id="isApproved" name="isApproved" {{if .Data.Approved}}checked{{end}}>
     <br>
     <br>
     <label for="text">Message:</label>
-    <textarea id="text" name="text" required>{{.Data.Text}}</textarea>
+    <textarea id="text" name="text" data-character-limit="2500" required>{{.Data.Text}}</textarea>
     <br>
     <input type="submit" value="Update">
 </form>

@@ -1,3 +1,5 @@
+//go:build browser
+
 package main
 
 import (
@@ -12,22 +14,81 @@ import (
 	"guestbook/constants"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 )
 
 func featureBrowser(t *testing.T) (*rod.Page, string) {
 	t.Helper()
-	// Release-mode scripts fetch messages from the shared public test origin.
 	resetTestRouter()
-	server := httptest.NewServer(initRouter())
-	t.Cleanup(server.Close)
-	instance := browser.MustIncognito()
+	instance := rod.New().ControlURL(launcher.New().Headless(true).MustLaunch()).MustConnect()
 	t.Cleanup(instance.MustClose)
-	return instance.MustPage().Timeout(30 * time.Second), server.URL
+	page := instance.MustPage().MustActivate().Timeout(30 * time.Second)
+	page = page.WithPanic(func(value interface{}) {
+		debugPage := page.CancelTimeout().Timeout(3 * time.Second)
+		state, stateErr := (proto.RuntimeEvaluate{Expression: `JSON.stringify({
+			ready:document.readyState, location:location.href, visibility:document.visibilityState,
+			resources:performance.getEntriesByType("resource").map(e=>e.name)
+		})`, ReturnByValue: true}).Call(debugPage)
+		if stateErr != nil {
+			t.Logf("browser failure document evaluation: %v", stateErr)
+		} else if state.ExceptionDetails != nil {
+			t.Logf("browser failure document exception: %+v", state.ExceptionDetails)
+		} else {
+			t.Logf("browser failure document: %s", state.Result.Value.Str())
+		}
+		version, versionErr := (proto.BrowserGetVersion{}).Call(instance.Timeout(3 * time.Second))
+		t.Logf("browser failure version: %+v; error: %v", version, versionErr)
+		panic(value)
+	})
+	if err := (proto.NetworkEnable{}).Call(page); err != nil {
+		t.Fatal(err)
+	}
+	if err := (proto.NetworkSetBlockedURLs{Urls: []string{"https://cdnjs.cloudflare.com/*"}}).Call(page); err != nil {
+		t.Fatal(err)
+	}
+	eventsPage, stopEvents := page.WithCancel()
+	eventsDone := make(chan struct{})
+	t.Cleanup(func() {
+		stopEvents()
+		<-eventsDone
+	})
+	waitEvents := eventsPage.EachEvent(func(event *proto.PageJavascriptDialogOpening) {
+		t.Errorf("unexpected browser dialog: %s", event.Message)
+		if err := (proto.PageHandleJavaScriptDialog{Accept: false}).Call(eventsPage); err != nil {
+			t.Logf("could not dismiss unexpected dialog: %v", err)
+		}
+	}, func(event *proto.RuntimeExceptionThrown) {
+		t.Logf("browser script exception: %s", event.ExceptionDetails.Text)
+	})
+	go func() {
+		defer close(eventsDone)
+		waitEvents()
+	}()
+	return page, testBaseURL
 }
 
 func waitForGuestbook(page *rod.Page) {
-	page.MustWait(`() => document.querySelector("#guestbooks___guestbook-messages-container").textContent.length > 0`)
+	if err := page.WaitLoad(); err != nil {
+		debugPage := page.CancelTimeout().Timeout(3 * time.Second)
+		state, stateErr := (proto.RuntimeEvaluate{Expression: `JSON.stringify({
+			ready:document.readyState, location:location.href,
+			entries:performance.getEntriesByType("resource").map(e=>e.name),
+			messages:document.querySelector("#guestbooks___guestbook-messages-container")?.textContent
+		})`, ReturnByValue: true}).Call(debugPage)
+		version, versionErr := (proto.BrowserGetVersion{}).Call(page.CancelTimeout().Timeout(3 * time.Second))
+		panic(fmt.Errorf("page did not load: %w; state=%v; diagnostics=%v; browser=%v; browserError=%v", err, state, stateErr, version, versionErr))
+	}
+	if err := page.Wait(rod.Eval(`() => document.querySelector("#guestbooks___guestbook-messages-container").textContent.length > 0`)); err != nil {
+		debugPage := page.CancelTimeout().Timeout(3 * time.Second)
+		state, stateErr := (proto.RuntimeEvaluate{Expression: `JSON.stringify({
+			messages:document.querySelector("#guestbooks___guestbook-messages-container")?.innerHTML,
+			status:document.querySelector("#guestbooks___message-load-status")?.textContent,
+			instance:!!window.guestbooks___instance,
+			ready:document.readyState, visibility:document.visibilityState
+		})`, ReturnByValue: true}).Call(debugPage)
+		panic(fmt.Errorf("guestbook did not load: %w; state=%v; diagnostics=%v", err, state, stateErr))
+	}
 }
 
 func fillGuestbook(page *rod.Page) {
@@ -740,8 +801,7 @@ func TestGuestbookSettingsBrowserOptIn(t *testing.T) {
 	page.MustElement("#submissionMessage").MustInput("ありがとう！")
 	page.MustElement("#collectEmail").MustClick()
 	page.MustElement("#emailFieldLabel").MustSelectAllText().MustInput("返信先 (任意)")
-	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick()
-	page.MustWaitLoad()
+	submitBrowserForm(page, "#guestbook-edit-form")
 	page.MustNavigate(settingsURL).MustWaitLoad()
 	if page.MustElement("#submissionMessage").MustProperty("value").Str() != "ありがとう！" ||
 		!page.MustElement("#collectEmail").MustProperty("checked").Bool() {
@@ -749,8 +809,7 @@ func TestGuestbookSettingsBrowserOptIn(t *testing.T) {
 	}
 	page.MustElement("#submissionAction").MustSelect("Keep current behavior (no confirmation)")
 	page.MustElement("#collectEmail").MustClick()
-	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick()
-	page.MustWaitLoad()
+	submitBrowserForm(page, "#guestbook-edit-form")
 	page.MustNavigate(settingsURL).MustWaitLoad()
 	if err := db.First(&book, book.ID).Error; err != nil {
 		t.Fatal(err)

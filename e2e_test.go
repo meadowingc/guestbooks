@@ -1,3 +1,5 @@
+//go:build browser
+
 package main
 
 import (
@@ -6,144 +8,44 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
-	"github.com/spf13/viper"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-var (
-	testServer   *httptest.Server
-	testBaseURL  string
-	testDBDir    string
-	browser      *rod.Browser
-	testRequests *rod.HijackRouter
-	testRouter   atomic.Pointer[chi.Mux]
-)
+var browser *rod.Browser
 
-// TestMain sets up and tears down the test environment
-func TestMain(m *testing.M) {
-	// Setup
-	if err := setupTestEnvironment(); err != nil {
-		log.Fatalf("Failed to setup test environment: %v", err)
-	}
-
-	// Run tests
-	code := m.Run()
-
-	// Teardown
-	teardownTestEnvironment()
-
-	os.Exit(code)
-}
-
-func setupTestEnvironment() error {
-	var err error
-	testDBDir, err = os.MkdirTemp("", "guestbooks-tests-")
-	if err != nil {
-		return err
-	}
-	testDBFile := filepath.Join(testDBDir, "guestbook.db")
-	db, err = gorm.Open(sqlite.Open("file:"+testDBFile+"?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{Logger: databaseLogger})
-	if err != nil {
-		return fmt.Errorf("failed to connect to test database: %w", err)
-	}
-
-	// Migrate the schema
-	err = db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{})
-	if err != nil {
-		return fmt.Errorf("failed to migrate test database: %w", err)
-	}
-
-	// Initialize cache
-	messageCache, err = NewMessageCache(1000, 5*time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to initialize cache: %w", err)
-	}
-
-	// Load config (or use defaults)
-	viper.SetDefault("mail.smtp_host", "localhost")
-	viper.SetDefault("mail.smtp_port", 587)
-	viper.Set("mailer.mailer_name", "none")
-
-	// Initialise runtime config so initRouter() can read appConfig values.
-	initRuntimeConfig()
-
-	// Start test server
-	powChallengeStore = NewChallengeStore()
-	resetTestRouter()
-	testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		testRouter.Load().ServeHTTP(w, r)
-	}))
-	testBaseURL = testServer.URL
-	appConfig.PublicURL = testBaseURL
-
-	// Launch browser
-	l := launcher.New().Headless(true).MustLaunch()
-	browser = rod.New().ControlURL(l).MustConnect()
-	testRequests = browser.HijackRequests()
-	testRequests.MustAdd("https://cdnjs.cloudflare.com/*", func(ctx *rod.Hijack) {
-		ctx.Response.SetBody("")
-	})
-	go testRequests.Run()
-
-	log.Println("Test environment setup complete")
-	return nil
-}
-
-func resetTestRouter() {
-	testRouter.Store(initRouter())
-}
-
-func teardownTestEnvironment() {
-	if testRequests != nil {
-		if err := testRequests.Stop(); err != nil {
-			log.Printf("Error stopping test request interception: %v", err)
+func init() {
+	startBrowserTests = func() {
+		l := launcher.New().Headless(true).MustLaunch()
+		browser = rod.New().ControlURL(l).MustConnect()
+		requests := browser.HijackRequests()
+		requests.MustAdd("https://cdnjs.cloudflare.com/*", func(ctx *rod.Hijack) {
+			ctx.Response.SetBody("")
+		})
+		go requests.Run()
+		stopBrowserTests = func() {
+			if err := requests.Stop(); err != nil {
+				log.Printf("Error stopping test request interception: %v", err)
+			}
+			browser.MustClose()
 		}
 	}
-	// Close browser
-	if browser != nil {
-		browser.MustClose()
-	}
-
-	// Shutdown server
-	if testServer != nil {
-		testServer.Close()
-	}
-
-	// Close database
-	if db != nil {
-		sqlDB, _ := db.DB()
-		if sqlDB != nil {
-			sqlDB.Close()
-		}
-	}
-
-	if testDBDir != "" {
-		os.Remove(filepath.Join(testDBDir, "guestbook.db"))
-		os.Remove(filepath.Join(testDBDir, "guestbook.db-wal"))
-		os.Remove(filepath.Join(testDBDir, "guestbook.db-shm"))
-		os.Remove(testDBDir)
-	}
-
-	log.Println("Test environment teardown complete")
 }
 
 // TestGuestbookBasicFlow tests the complete user journey
 func TestGuestbookBasicFlow(t *testing.T) {
 	resetTestRouter()
-	page := browser.MustPage(testBaseURL)
+	page := browser.MustPage(testBaseURL).Timeout(30 * time.Second)
 	defer page.MustClose()
+	waitForMessage := func(text string) {
+		page.MustWait(`text => document.querySelector("#guestbooks___guestbook-messages-container")?.textContent.includes(text)`, text)
+	}
 
 	username := fmt.Sprintf("testuser_%d", time.Now().Unix())
 	password := "testpassword123"
@@ -155,10 +57,7 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	page.MustElement("input[name='username']").MustInput(username)
 	page.MustElement("input[name='password']").MustInput(password)
 	page.MustElement("input[type='checkbox']").MustClick() // Accept terms and conditions
-	page.MustElement("form button[type='submit']").MustClick()
-
-	// Wait for redirect to admin panel
-	page.MustWaitLoad()
+	submitBrowserForm(page, "form.auth-form")
 
 	// Wait for the URL to actually be /admin (not /admin/signup or /admin/signin)
 	// This ensures the signup succeeded and we're authenticated
@@ -180,11 +79,7 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	page.MustWaitLoad()
 
 	page.MustElement("input[name='websiteURL']").MustInput(websiteURL)
-	page.MustElement("#guestbook-edit-form button[type='submit']").MustClick() // Target form by ID
-
-	// Wait for redirect back to guestbook list
-	page.MustWaitLoad()
-	time.Sleep(500 * time.Millisecond) // Give it a moment to fully load
+	submitBrowserForm(page, "#guestbook-edit-form")
 
 	// Get the guestbook ID from the page - find the first link that's NOT the "new" link
 	guestbookLink := page.MustElement("a[href*='/admin/guestbook/']:not([href*='/new'])").MustProperty("href").String()
@@ -199,19 +94,14 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	t.Log("Step 3: Submitting first message")
 	publicURL := testBaseURL + "/guestbook/" + guestbookID
 	page.MustNavigate(publicURL)
-	page.MustWaitLoad()
-
-	// Wait for the form to be visible (the page includes an async script that might modify the form)
-	page.MustWaitStable()
-	time.Sleep(300 * time.Millisecond) // Give JavaScript time to initialize
+	waitForGuestbook(page)
 
 	page.MustElement("#guestbooks___guestbook-form input[name='name']").MustInput("Test User 1")
 	page.MustElement("#guestbooks___guestbook-form textarea[name='text']").MustInput("This is my first test message!")
 	page.MustElement("#guestbooks___guestbook-form input[type='submit']").MustClick()
-	page.MustWaitLoad()
+	waitForMessage("This is my first test message!")
 
 	// Verify message appears on the page (messages are loaded via JavaScript)
-	time.Sleep(500 * time.Millisecond) // Wait for JS to render messages
 	pageText := page.MustElement("body").MustText()
 	if !strings.Contains(pageText, "Test User 1") {
 		t.Error("First message name not found on page")
@@ -225,10 +115,9 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	page.MustElement("#guestbooks___guestbook-form input[name='name']").MustInput("Test User 2")
 	page.MustElement("#guestbooks___guestbook-form textarea[name='text']").MustInput("This is my second test message!")
 	page.MustElement("#guestbooks___guestbook-form input[type='submit']").MustClick()
-	page.MustWaitLoad()
+	waitForMessage("This is my second test message!")
 
 	// Verify both messages appear (cache should have been invalidated)
-	time.Sleep(500 * time.Millisecond) // Wait for JS to render messages
 	pageText = page.MustElement("body").MustText()
 	if !strings.Contains(pageText, "Test User 1") {
 		t.Error("First message not found after second submission")
@@ -245,8 +134,7 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	startTime := time.Now()
 	for i := 0; i < 5; i++ {
 		page.MustNavigate(publicURL)
-		page.MustWaitLoad()
-		time.Sleep(200 * time.Millisecond) // Wait for JS
+		waitForGuestbook(page)
 		if !strings.Contains(page.MustElement("body").MustText(), "Test User 2") {
 			t.Errorf("Message not found on reload %d", i+1)
 		}
@@ -265,29 +153,27 @@ func TestGuestbookBasicFlow(t *testing.T) {
 	page.MustWaitLoad()
 
 	// Edit the message
-	textArea := page.MustElement("textarea[name='text']")
+	editForm := "form[action*='/message/'][action$='/edit']"
+	textArea := page.MustElement(editForm + " textarea[name='text']")
 	textArea.MustSelectAllText()
 	textArea.MustInput("This message has been edited!")
-	page.MustElement("form input[type='submit']").MustClick()
-	page.MustWaitLoad()
+	submitBrowserForm(page, editForm)
 
 	// Go back to public page and verify the edit
 	page.MustNavigate(publicURL)
-	page.MustWaitLoad()
-	time.Sleep(500 * time.Millisecond) // Wait for JS to render
+	waitForGuestbook(page)
 	if !strings.Contains(page.MustElement("body").MustText(), "This message has been edited!") {
 		t.Error("Edited message not found on public page (cache may not have been invalidated)")
 	}
-
-	t.Log("All tests passed!")
 }
 
 func TestGuestbookDatesUseBrowserLocale(t *testing.T) {
 	resetTestRouter()
 	adminUser := AdminUser{
-		Username:     fmt.Sprintf("datelocaletest_%d", time.Now().UnixNano()),
-		PasswordHash: []byte("test"),
-		SessionToken: fmt.Sprintf("date_locale_token_%d", time.Now().UnixNano()),
+		Username:         fmt.Sprintf("datelocaletest_%d", time.Now().UnixNano()),
+		PasswordHash:     []byte("test"),
+		SessionToken:     fmt.Sprintf("date_locale_token_%d", time.Now().UnixNano()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	if result := db.Create(&adminUser); result.Error != nil {
 		t.Fatalf("Failed to create admin user: %v", result.Error)
@@ -364,9 +250,10 @@ func TestAPIEndpointsCaching(t *testing.T) {
 	resetTestRouter()
 	// Create a test guestbook directly in the database
 	adminUser := AdminUser{
-		Username:     fmt.Sprintf("apitest_%d", time.Now().Unix()),
-		PasswordHash: []byte("test"),
-		SessionToken: "test_token",
+		Username:         fmt.Sprintf("apitest_%d", time.Now().Unix()),
+		PasswordHash:     []byte("test"),
+		SessionToken:     "test_token",
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&adminUser)
 
@@ -592,16 +479,18 @@ func TestBulkDeleteCrossGuestbookIsolation(t *testing.T) {
 
 	// Create two separate admin users with their own guestbooks
 	user1 := AdminUser{
-		Username:     fmt.Sprintf("user1_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("token1_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("user1_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("token1_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user1)
 
 	user2 := AdminUser{
-		Username:     fmt.Sprintf("user2_%d", time.Now().UnixNano()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("token2_%d", time.Now().UnixNano()),
+		Username:         fmt.Sprintf("user2_%d", time.Now().UnixNano()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("token2_%d", time.Now().UnixNano()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user2)
 
@@ -645,9 +534,10 @@ func TestBulkDeleteValidation(t *testing.T) {
 	t.Log("Testing bulk delete validation logic")
 
 	user := AdminUser{
-		Username:     fmt.Sprintf("validtest_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("valtoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("validtest_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("valtoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -920,6 +810,7 @@ func TestBulkApproveMessages(t *testing.T) {
 		}
 		request.Header.Set("Content-Type", "application/json")
 		request.AddCookie(&http.Cookie{Name: string(AdminTokenCookieName), Value: user.SessionToken})
+		addBrowserRequestCSRF(t, request)
 
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {
@@ -1086,9 +977,10 @@ func TestMultipleRepliesToSameMessage(t *testing.T) {
 
 	// Create test data directly in database
 	user := AdminUser{
-		Username:     fmt.Sprintf("multireply_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("multitoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("multireply_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("multitoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -1154,9 +1046,10 @@ func TestReplyOnlyOneLevelDeep(t *testing.T) {
 
 	// Create test data
 	user := AdminUser{
-		Username:     fmt.Sprintf("nestedtest_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("nestedtoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("nestedtest_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("nestedtoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -1196,6 +1089,7 @@ func TestReplyOnlyOneLevelDeep(t *testing.T) {
 	req, _ := http.NewRequest("POST", replyToReplyURL, strings.NewReader("text=Nested reply attempt"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+	addBrowserRequestCSRF(t, req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1224,9 +1118,10 @@ func TestReplyEmptyTextValidation(t *testing.T) {
 	t.Log("Testing empty reply validation")
 
 	user := AdminUser{
-		Username:     fmt.Sprintf("emptyreply_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("emptytoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("emptyreply_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("emptytoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -1255,6 +1150,7 @@ func TestReplyEmptyTextValidation(t *testing.T) {
 	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text="))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+	addBrowserRequestCSRF(t, req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1284,16 +1180,18 @@ func TestReplyCrossGuestbookIsolation(t *testing.T) {
 
 	// Create two users with their own guestbooks
 	user1 := AdminUser{
-		Username:     fmt.Sprintf("replyuser1_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("replytoken1_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("replyuser1_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("replytoken1_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user1)
 
 	user2 := AdminUser{
-		Username:     fmt.Sprintf("replyuser2_%d", time.Now().UnixNano()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("replytoken2_%d", time.Now().UnixNano()),
+		Username:         fmt.Sprintf("replyuser2_%d", time.Now().UnixNano()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("replytoken2_%d", time.Now().UnixNano()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user2)
 
@@ -1330,6 +1228,7 @@ func TestReplyCrossGuestbookIsolation(t *testing.T) {
 	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Malicious reply"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user1.SessionToken))
+	addBrowserRequestCSRF(t, req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1358,9 +1257,10 @@ func TestReplyToMessageFromDifferentGuestbook(t *testing.T) {
 	t.Log("Testing reply to message from different guestbook")
 
 	user := AdminUser{
-		Username:     fmt.Sprintf("diffgb_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("diffgbtoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("diffgb_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("diffgbtoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -1397,6 +1297,7 @@ func TestReplyToMessageFromDifferentGuestbook(t *testing.T) {
 	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Cross-guestbook reply"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+	addBrowserRequestCSRF(t, req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -1508,9 +1409,10 @@ func TestReplyToNonExistentMessage(t *testing.T) {
 	t.Log("Testing reply to non-existent message")
 
 	user := AdminUser{
-		Username:     fmt.Sprintf("nonexist_%d", time.Now().Unix()),
-		PasswordHash: []byte("password"),
-		SessionToken: fmt.Sprintf("nonexisttoken_%d", time.Now().Unix()),
+		Username:         fmt.Sprintf("nonexist_%d", time.Now().Unix()),
+		PasswordHash:     []byte("password"),
+		SessionToken:     fmt.Sprintf("nonexisttoken_%d", time.Now().Unix()),
+		SessionExpiresAt: time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	db.Create(&user)
 
@@ -1532,6 +1434,7 @@ func TestReplyToNonExistentMessage(t *testing.T) {
 	req, _ := http.NewRequest("POST", replyURL, strings.NewReader("text=Reply to nothing"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Cookie", fmt.Sprintf("admin_token=%s", user.SessionToken))
+	addBrowserRequestCSRF(t, req)
 
 	resp, err := client.Do(req)
 	if err != nil {

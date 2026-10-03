@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,9 +26,10 @@ import (
 func featureFixture(t *testing.T) (AdminUser, Guestbook) {
 	t.Helper()
 	user := AdminUser{
-		Username:     fmt.Sprintf("feature_%d", time.Now().UnixNano()),
-		SessionToken: fmt.Sprintf("feature_token_%d", time.Now().UnixNano()),
-		PasswordHash: []byte("test"),
+		Username:         fmt.Sprintf("feature_%d", time.Now().UnixNano()),
+		SessionToken:     fmt.Sprintf("feature_token_%d", time.Now().UnixNano()),
+		SessionExpiresAt: time.Now().Add(sessionLifetime).Unix(),
+		PasswordHash:     []byte("test"),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatal(err)
@@ -47,7 +49,19 @@ func featureRequest(handler http.Handler, method, target string, form url.Values
 	}
 	if user != nil {
 		request.AddCookie(&http.Cookie{Name: string(AdminTokenCookieName), Value: user.SessionToken})
-		request.Header.Set("Origin", "http://"+request.Host)
+		request.Header.Set("Origin", PublicURL())
+		if constants.DEBUG_MODE {
+			request.Header.Set("Origin", "http://"+request.Host)
+		}
+	}
+	if method != http.MethodGet && (strings.HasPrefix(target, "/admin/") || target == "/reset-password" || target == "/forgot-password") {
+		tokenRequest := httptest.NewRequest(http.MethodGet, "/admin/signin", nil)
+		tokenResponse := httptest.NewRecorder()
+		handler.ServeHTTP(tokenResponse, tokenRequest)
+		request.Header.Set("X-CSRF-Token", tokenResponse.Header().Get("X-CSRF-Token"))
+		for _, cookie := range tokenResponse.Result().Cookies() {
+			request.AddCookie(cookie)
+		}
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -523,6 +537,13 @@ func TestVerificationResendLegacyNullSettings(t *testing.T) {
 	if err := db.Model(&user).Updates(map[string]any{"email_verified": nil, "email_verification_token": nil}).Error; err != nil {
 		t.Fatal(err)
 	}
+	requireStatus(t, featureRequest(router, "POST", "/admin/settings/resend-verification", nil, &user, false), 429)
+	if calls != 1 {
+		t.Fatal("legacy NULL fields bypassed the shared cooldown")
+	}
+	if err := db.Model(&user).Update("verification_attempt_at", time.Now().Add(-time.Minute).Unix()).Error; err != nil {
+		t.Fatal(err)
+	}
 	requireStatus(t, featureRequest(router, "POST", "/admin/settings/resend-verification", nil, &user, false), 303)
 	if calls != 2 {
 		t.Fatalf("expected initial and resend email requests, got %d", calls)
@@ -531,16 +552,28 @@ func TestVerificationResendLegacyNullSettings(t *testing.T) {
 
 func testMailer(t *testing.T, enabled bool, sender func(string, string) error) {
 	t.Helper()
-	previousMailer := viper.GetString("mailer.mailer_name")
+	settings := map[string]any{
+		"mailer.mailer_name":     "smtp",
+		"mailer.smtp.host":       "localhost",
+		"mailer.smtp.port":       2525,
+		"mailer.smtp.username":   "test-user",
+		"mailer.smtp.password":   "test-password",
+		"mailer.smtp.from_email": "sender@example.test",
+	}
+	previous := make(map[string]any, len(settings))
+	for key, value := range settings {
+		previous[key] = viper.Get(key)
+		viper.Set(key, value)
+	}
 	previousSender := sendVerificationEmail
-	if enabled {
-		viper.Set("mailer.mailer_name", "smtp")
-	} else {
+	if !enabled {
 		viper.Set("mailer.mailer_name", "none")
 	}
-	sendVerificationEmail = sender
+	sendVerificationEmail = func(_ context.Context, email, token string) error { return sender(email, token) }
 	t.Cleanup(func() {
-		viper.Set("mailer.mailer_name", previousMailer)
+		for key, value := range previous {
+			viper.Set(key, value)
+		}
 		sendVerificationEmail = previousSender
 	})
 }

@@ -15,8 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/csrf"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -33,12 +35,16 @@ func renderAdminTemplate(w http.ResponseWriter, r *http.Request, tmpl string, da
 		NotificationStatus notificationStatus
 		AllowSignups       bool
 		Data               any
+		CSRFField          template.HTML
+		CSRFToken          string
 	}{
 		templateCommon:     currentTemplateCommon(),
 		CurrentUser:        getSignedInAdminUserOrNil(r),
 		NotificationStatus: notificationStatusFor(getSignedInAdminUserOrNil(r)),
 		AllowSignups:       appConfig.AllowSignups,
 		Data:               data,
+		CSRFField:          csrf.TemplateField(r),
+		CSRFToken:          csrf.Token(r),
 	}
 
 	templatesDir := "templates/admin"
@@ -60,7 +66,7 @@ func getSignedInAdminUserOrNil(r *http.Request) *AdminUser {
 func getSignedInAdminOrFail(r *http.Request) *AdminUser {
 	adminUser := getSignedInAdminUserOrNil(r)
 	if adminUser == nil {
-		log.Fatalf("Expected user to be signed in but it wasn't")
+		panic("authenticated handler called without a user")
 	}
 
 	return adminUser
@@ -79,17 +85,16 @@ func generateAuthToken() (string, error) {
 
 func AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// if logout then just continue
-		if r.URL.Path == "/admin/logout" {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		// try to set admin user into context
 		cookie, err := r.Cookie(string(AdminTokenCookieName))
 		if err != nil || cookie.Value == "" {
 			if r.URL.Path != "/admin/signin" && r.URL.Path != "/admin/signup" {
-				http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+				if r.URL.Path == "/admin/logout" {
+					clearSessionCookie(w)
+					http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+					return
+				}
+				authenticationRequired(w, r)
 				return
 			} else {
 				// then we're already trying to signin or signup, so just let it
@@ -101,17 +106,19 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 
 		// Validate the token and retrieve the corresponding user
 		var user AdminUser
-		result := db.Where(&AdminUser{SessionToken: cookie.Value}).First(&user)
+		result := db.Where("session_token = ? AND session_expires_at > ?", cookie.Value, time.Now().Unix()).First(&user)
 		if result.Error != nil {
-			// Clear the invalid cookie
-			http.SetCookie(w, &http.Cookie{
-				Name:   string(AdminTokenCookieName),
-				Value:  "",
-				Path:   "/",
-				MaxAge: -1,
-			})
-
-			http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
+			if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+				log.Printf("Session lookup failed: %v", result.Error)
+				http.Error(w, "Authentication is temporarily unavailable", http.StatusInternalServerError)
+				return
+			}
+			clearSessionCookie(w)
+			if r.URL.Path == "/admin/signin" || r.URL.Path == "/admin/signup" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			authenticationRequired(w, r)
 			return
 		}
 
@@ -136,14 +143,17 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
 
-		var admin AdminUser
-		result := db.Where(&AdminUser{Username: username}).First(&admin)
-		if result.Error != nil {
-			http.Error(w, "Invalid username. You're trying to sign in, but perhaps you still need to sign up?", http.StatusUnauthorized)
+		admin, err := lookupUsername(username)
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				recordLookupError(w, err, "account")
+				return
+			}
+			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 			return
 		}
 
-		err := bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
+		err = bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password))
 		if err != nil {
 			http.Error(w, "Invalid password", http.StatusUnauthorized)
 			return
@@ -156,16 +166,19 @@ func AdminSignIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		admin.SessionToken = token
-		db.Save(&admin)
-
-		http.SetCookie(w, &http.Cookie{
-			Name:     string(AdminTokenCookieName),
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
+		result := db.Model(&AdminUser{}).
+			Where("id = ? AND password_hash = ?", admin.ID, string(admin.PasswordHash)).
+			Updates(map[string]any{"session_token": token, "session_expires_at": time.Now().Add(sessionLifetime).Unix()})
+		if result.Error != nil {
+			log.Printf("Persist sign-in session: %v", result.Error)
+			http.Error(w, "Error saving session", http.StatusInternalServerError)
+			return
+		}
+		if result.RowsAffected != 1 {
+			http.Error(w, "Your credentials changed. Please sign in again.", http.StatusConflict)
+			return
+		}
+		setSessionCookie(w, token)
 
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
 	}
@@ -189,6 +202,23 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 	} else {
 		username := r.FormValue("username")
 		password := r.FormValue("password")
+		if username == "" || username != strings.TrimSpace(username) || !utf8.ValidString(username) || utf8.RuneCountInString(username) > maxNameCharacters {
+			http.Error(w, "Enter a username of at most 200 characters without surrounding whitespace", http.StatusBadRequest)
+			return
+		}
+		if len(password) == 0 || len(password) > 72 {
+			http.Error(w, "Password must contain 1 to 72 bytes", http.StatusBadRequest)
+			return
+		}
+		matches, err := normalizedUsernameMatches(username)
+		if err != nil {
+			recordLookupError(w, err, "account")
+			return
+		}
+		if len(matches) != 0 {
+			http.Error(w, "Username is already in use", http.StatusConflict)
+			return
+		}
 
 		passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 		if err != nil {
@@ -203,7 +233,7 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		newAdmin := AdminUser{Username: username, PasswordHash: passwordHash, SessionToken: token}
+		newAdmin := AdminUser{Username: username, PasswordHash: passwordHash, SessionToken: token, SessionExpiresAt: time.Now().Add(sessionLifetime).Unix()}
 
 		result := db.Create(&newAdmin)
 		if result.Error != nil {
@@ -211,13 +241,7 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		http.SetCookie(w, &http.Cookie{
-			Name:     string(AdminTokenCookieName),
-			Value:    token,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
+		setSessionCookie(w, token)
 
 		// Redirect to the admin sign-in page after successful sign-up
 		http.Redirect(w, r, "/admin", http.StatusSeeOther)
@@ -225,12 +249,19 @@ func AdminSignUp(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminLogout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:   string(AdminTokenCookieName),
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
+	user := getSignedInAdminOrFail(r)
+	token, err := generateAuthToken()
+	if err != nil {
+		http.Error(w, "Error revoking session", http.StatusInternalServerError)
+		return
+	}
+	result := db.Model(&AdminUser{}).Where("id = ? AND session_token = ?", user.ID, user.SessionToken).
+		Updates(map[string]any{"session_token": token, "session_expires_at": 0})
+	if result.Error != nil {
+		http.Error(w, "Error revoking session", http.StatusInternalServerError)
+		return
+	}
+	clearSessionCookie(w)
 	http.Redirect(w, r, "/admin/signin", http.StatusSeeOther)
 }
 
@@ -254,8 +285,14 @@ func AdminGuestbookList(w http.ResponseWriter, r *http.Request) {
 	for _, g := range guestbooks {
 		var total int64
 		var pending int64
-		db.Model(&Message{}).Where("guestbook_id = ?", g.ID).Count(&total)
-		db.Model(&Message{}).Where("guestbook_id = ? AND approved = ?", g.ID, false).Count(&pending)
+		if err := activeMessagesQuery(db).Where("messages.guestbook_id = ?", g.ID).Count(&total).Error; err != nil {
+			recordLookupError(w, err, "message counts")
+			return
+		}
+		if err := activeMessagesQuery(db).Where("messages.guestbook_id = ? AND messages.approved = ?", g.ID, false).Count(&pending).Error; err != nil {
+			recordLookupError(w, err, "message counts")
+			return
+		}
 
 		items = append(items, GuestbookListItem{
 			Guestbook:       g,
@@ -271,10 +308,12 @@ func AdminShowGuestbook(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 
 	var guestbook Guestbook
-	result := db.Preload("Messages", func(db *gorm.DB) *gorm.DB {
-		return db.Where("parent_message_id IS NULL").Order("created_at desc")
-	}).Preload("Messages.Replies", func(db *gorm.DB) *gorm.DB {
-		return db.Order("created_at asc")
+	result := activeGuestbooksQuery(db.WithContext(r.Context())).Preload("Messages", func(tx *gorm.DB) *gorm.DB {
+		return activeMessagesQuery(tx).Where("messages.guestbook_id = ? AND messages.parent_message_id IS NULL", guestbookID).
+			Order("messages.created_at desc, messages.id desc")
+	}).Preload("Messages.Replies", func(tx *gorm.DB) *gorm.DB {
+		return activeMessagesQuery(tx).Where("messages.guestbook_id = ?", guestbookID).
+			Order("messages.created_at asc, messages.id asc")
 	}).First(&guestbook, "id = ?", guestbookID)
 	if result.Error != nil {
 		http.Error(w, "Guestbook not found", http.StatusNotFound)
@@ -301,11 +340,15 @@ func AdminCreateGuestbook(w http.ResponseWriter, r *http.Request) {
 		challengeHint := r.FormValue("challengeHint")
 		challengeFailedMessage := r.FormValue("challengeFailedMessage")
 		challengeAnswer := r.FormValue("challengeAnswer")
+		if err := challengeSettingsError(challengeQuestion, challengeAnswer); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		requiresApproval := r.FormValue("requiresApproval") == "on"
 		powEnabled := r.FormValue("powEnabled") == "on"
 		customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
 
-		isCssValid, errorMsg := validateCSS(customPageCSS)
+		isCssValid, errorMsg := validateGuestbookCSSInput(customPageCSS)
 		if !isCssValid {
 			http.Error(w, errorMsg, http.StatusBadRequest)
 			return
@@ -408,8 +451,8 @@ func AdminDeleteGuestbook(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("admin=%d username=%q action=delete_guestbook guestbook_id=%d", currentUser.ID, currentUser.Username, guestbook.ID)
 
-	result = db.Delete(&guestbook, guestbookID)
-	if result.Error != nil {
+	if err := softDeleteGuestbook(guestbook.ID); err != nil {
+		log.Printf("Delete guestbook=%d: %v", guestbook.ID, err)
 		http.Error(w, "Error deleting guestbook", http.StatusInternalServerError)
 		return
 	}
@@ -464,11 +507,15 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	challengeHint := r.FormValue("challengeHint")
 	challengeFailedMessage := r.FormValue("challengeFailedMessage")
 	challengeAnswer := r.FormValue("challengeAnswer")
+	if err := challengeSettingsError(challengeQuestion, challengeAnswer); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	requiresApproval := r.FormValue("requiresApproval") == "on"
 	powEnabled := r.FormValue("powEnabled") == "on"
 	customPageCSS := strings.TrimSpace(r.FormValue("customPageCSS"))
 
-	isCssValid, errorMsg := validateCSS(customPageCSS)
+	isCssValid, errorMsg := validateGuestbookCSSInput(customPageCSS)
 	if !isCssValid {
 		http.Error(w, errorMsg, http.StatusBadRequest)
 		return
@@ -511,9 +558,22 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	result = db.Save(&guestbook)
+	result = db.Model(&Guestbook{}).Where("id = ? AND admin_user_id = ?", guestbook.ID, currentUser.ID).
+		Updates(map[string]any{
+			"website_url": guestbook.WebsiteURL, "requires_approval": guestbook.RequiresApproval,
+			"pow_enabled": guestbook.PowEnabled, "challenge_question": guestbook.ChallengeQuestion,
+			"challenge_hint": guestbook.ChallengeHint, "challenge_failed_message": guestbook.ChallengeFailedMessage,
+			"challenge_answer": guestbook.ChallengeAnswer, "custom_page_css": guestbook.CustomPageCSS,
+			"submission_action": guestbook.SubmissionAction, "submission_message": guestbook.SubmissionMessage,
+			"submission_redirect_url": guestbook.SubmissionRedirectURL, "collect_email": guestbook.CollectEmail,
+			"email_field_label": guestbook.EmailFieldLabel, "email_field_help": guestbook.EmailFieldHelp,
+		})
 	if result.Error != nil {
 		http.Error(w, "Error updating guestbook", http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected != 1 {
+		http.Error(w, "The guestbook was deleted or changed. Reload before retrying.", http.StatusConflict)
 		return
 	}
 
@@ -526,9 +586,10 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == "GET" {
 		var message Message
-		result := db.First(&message, messageID)
+		result := activeMessagesQuery(db.WithContext(r.Context())).
+			Where("messages.id = ? AND messages.guestbook_id = ?", messageID, guestbookID).First(&message)
 		if result.Error != nil {
-			http.Error(w, "Message not found", http.StatusNotFound)
+			recordLookupError(w, result.Error, "message")
 			return
 		}
 
@@ -547,9 +608,13 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 
 		renderAdminTemplate(w, r, "edit_message", message)
 	} else if r.Method == "POST" {
-		name := r.FormValue("name")
-		text := r.FormValue("text")
-		website := r.FormValue("website")
+		name := strings.TrimSpace(r.FormValue("name"))
+		text := normalizedMessageText(r.FormValue("text"))
+		website := strings.TrimSpace(r.FormValue("website"))
+		if err := messageInputError(name, text, website); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		isApproved := r.FormValue("isApproved") == "on"
 
 		var websitePtr *string
@@ -558,9 +623,10 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var message Message
-		result := db.First(&message, messageID)
+		result := activeMessagesQuery(db.WithContext(r.Context())).
+			Where("messages.id = ? AND messages.guestbook_id = ?", messageID, guestbookID).First(&message)
 		if result.Error != nil {
-			http.Error(w, "Message not found", http.StatusNotFound)
+			recordLookupError(w, result.Error, "message")
 			return
 		}
 
@@ -577,14 +643,16 @@ func AdminEditMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		message.Name = name
-		message.Text = text
-		message.Website = websitePtr
-		message.Approved = isApproved
-
-		result = db.Save(&message)
+		result = activeMessagesQuery(db.WithContext(r.Context())).
+			Where("messages.id = ? AND messages.guestbook_id = ?", message.ID, guestbook.ID).
+			Where("EXISTS (SELECT 1 FROM guestbooks WHERE guestbooks.id = messages.guestbook_id AND guestbooks.admin_user_id = ?)", currentUser.ID).
+			Updates(map[string]any{"name": name, "text": text, "website": websitePtr, "approved": isApproved})
 		if result.Error != nil {
 			http.Error(w, "Error updating message", http.StatusInternalServerError)
+			return
+		}
+		if result.RowsAffected != 1 {
+			http.Error(w, "The message was deleted or changed. Reload before retrying.", http.StatusConflict)
 			return
 		}
 
@@ -627,8 +695,8 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("admin=%d username=%q action=delete_message guestbook_id=%d message_id=%d", currentUser.ID, currentUser.Username, guestbook.ID, message.ID)
 
-	result = db.Delete(&message, messageID)
-	if result.Error != nil {
+	if err := softDeleteMessages(guestbook.ID, []uint{message.ID}); err != nil {
+		log.Printf("Delete message=%d: %v", message.ID, err)
 		http.Error(w, "Error deleting message", http.StatusInternalServerError)
 		return
 	}
@@ -642,7 +710,7 @@ func AdminDeleteMessage(w http.ResponseWriter, r *http.Request) {
 func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 	guestbookID := chi.URLParam(r, "guestbookID")
 	messageID := chi.URLParam(r, "messageID")
-	replyText := strings.TrimSpace(r.FormValue("text"))
+	replyText := normalizedMessageText(r.FormValue("text"))
 
 	if replyText == "" {
 		http.Error(w, "Reply text cannot be empty", http.StatusBadRequest)
@@ -652,7 +720,7 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 	var guestbook Guestbook
 	result := db.First(&guestbook, guestbookID)
 	if result.Error != nil {
-		http.Error(w, "Guestbook not found", http.StatusNotFound)
+		recordLookupError(w, result.Error, "guestbook")
 		return
 	}
 
@@ -665,7 +733,7 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 	var parentMessage Message
 	result = db.First(&parentMessage, messageID)
 	if result.Error != nil {
-		http.Error(w, "Message not found", http.StatusNotFound)
+		recordLookupError(w, result.Error, "message")
 		return
 	}
 
@@ -681,8 +749,8 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(replyText) > constants.MAX_MESSAGE_LENGTH {
-		http.Error(w, "Reply is too long, maximum length is "+fmt.Sprint(constants.MAX_MESSAGE_LENGTH)+" characters", http.StatusBadRequest)
+	if err := messageInputError(currentUser.ReplyName(), replyText, ""); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -696,9 +764,21 @@ func AdminReplyToMessage(w http.ResponseWriter, r *http.Request) {
 		ParentMessageID: &parentMessageID,
 	}
 
-	result = db.Create(&replyMessage)
-	if result.Error != nil {
-		http.Error(w, "Error creating reply", http.StatusInternalServerError)
+	err := writeTransaction(db.WithContext(r.Context()), func(tx *gorm.DB) error {
+		var count int64
+		if err := activeMessagesQuery(tx).
+			Where("messages.id = ? AND messages.guestbook_id = ? AND messages.parent_message_id IS NULL", parentMessage.ID, guestbook.ID).
+			Where("EXISTS (SELECT 1 FROM guestbooks WHERE guestbooks.id = messages.guestbook_id AND guestbooks.admin_user_id = ?)", currentUser.ID).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return tx.Create(&replyMessage).Error
+	})
+	if err != nil {
+		recordLookupError(w, err, "reply parent")
 		return
 	}
 
@@ -742,19 +822,25 @@ func AdminBulkDeleteMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Convert string IDs to uints and validate all messages belong to this guestbook
 	var messageIDs []uint
+	seen := make(map[uint]bool)
 	for _, idStr := range requestBody.MessageIDs {
-		var id int
-		_, err := fmt.Sscanf(idStr, "%d", &id)
-		if err != nil || id <= 0 {
+		id, err := parsePositiveID(idStr)
+		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid message ID: %s", idStr), http.StatusBadRequest)
 			return
 		}
-		messageIDs = append(messageIDs, uint(id))
+		if !seen[id] {
+			messageIDs = append(messageIDs, id)
+			seen[id] = true
+		}
 	}
 
 	// Verify all messages belong to this guestbook
 	var count int64
-	db.Model(&Message{}).Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Count(&count)
+	if err := activeMessagesQuery(db).Where("messages.id IN ? AND messages.guestbook_id = ?", messageIDs, guestbook.ID).Count(&count).Error; err != nil {
+		recordLookupError(w, err, "message selection")
+		return
+	}
 	if count != int64(len(messageIDs)) {
 		http.Error(w, "Some messages do not belong to this guestbook", http.StatusBadRequest)
 		return
@@ -764,16 +850,7 @@ func AdminBulkDeleteMessages(w http.ResponseWriter, r *http.Request) {
 		currentUser.ID, currentUser.Username, guestbook.ID, len(messageIDs), messageIDs)
 
 	// Delete messages in a transaction
-	err = db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Delete(&Message{})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != int64(len(messageIDs)) {
-			return fmt.Errorf("expected to delete %d messages but only deleted %d", len(messageIDs), result.RowsAffected)
-		}
-		return nil
-	})
+	err = softDeleteMessages(guestbook.ID, messageIDs)
 
 	if err != nil {
 		http.Error(w, "Error deleting messages", http.StatusInternalServerError)
@@ -819,18 +896,21 @@ func AdminBulkApproveMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	messageIDs := make([]uint, 0, len(requestBody.MessageIDs))
+	seen := make(map[uint]bool)
 	for _, idStr := range requestBody.MessageIDs {
-		var id int
-		_, err := fmt.Sscanf(idStr, "%d", &id)
-		if err != nil || id <= 0 {
+		id, err := parsePositiveID(idStr)
+		if err != nil {
 			http.Error(w, fmt.Sprintf("Invalid message ID: %s", idStr), http.StatusBadRequest)
 			return
 		}
-		messageIDs = append(messageIDs, uint(id))
+		if !seen[id] {
+			messageIDs = append(messageIDs, id)
+			seen[id] = true
+		}
 	}
 
 	var count int64
-	result = db.Model(&Message{}).Where("id IN ? AND guestbook_id = ?", messageIDs, guestbook.ID).Count(&count)
+	result = activeMessagesQuery(db).Where("messages.id IN ? AND messages.guestbook_id = ?", messageIDs, guestbook.ID).Count(&count)
 	if result.Error != nil {
 		http.Error(w, "Error validating messages", http.StatusInternalServerError)
 		return
@@ -867,6 +947,8 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 			notice = "Verification email requested. Check your inbox and follow the link to verify your address."
 		case "unavailable":
 			notice = "Settings saved, but no verification email was sent because email delivery is disabled on this instance."
+		case "cooldown":
+			notice = "Settings saved, but no verification email was sent. Wait one minute between verification attempts, then use Resend verification."
 		}
 		renderUserSettings(w, r, currentUser, notice, "info", http.StatusOK)
 		return
@@ -881,6 +963,10 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 	updates := map[string]any{}
 	if section == "" || section == "display_name" {
 		updatedUser.DisplayName = strings.TrimSpace(r.FormValue("display_name"))
+		if !utf8.ValidString(updatedUser.DisplayName) || utf8.RuneCountInString(updatedUser.DisplayName) > maxNameCharacters {
+			http.Error(w, "Display name must contain at most 200 characters", http.StatusBadRequest)
+			return
+		}
 		updates["display_name"] = updatedUser.DisplayName
 	}
 	if section == "" || section == "email" {
@@ -907,6 +993,10 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 		updatedUser.EmailVerified = false
 		updates["email_verification_token"] = updatedUser.EmailVerificationToken
 		updates["email_verified"] = false
+		updates["password_reset_token"] = ""
+		updates["password_reset_expiry"] = 0
+		updatedUser.PasswordResetToken = ""
+		updatedUser.PasswordResetExpiry = 0
 	}
 	query := db.Model(&AdminUser{}).Where("id = ?", currentUser.ID)
 	if section == "" || section == "email" {
@@ -943,6 +1033,7 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 		// Invalidate cache for all guestbooks owned by this user
 		var userGuestbooks []Guestbook
 		if err := db.Where("admin_user_id = ?", currentUser.ID).Find(&userGuestbooks).Error; err != nil {
+			messageCache.Clear()
 			http.Error(w, "Settings saved, but guestbook caches could not be refreshed", http.StatusInternalServerError)
 			return
 		}
@@ -955,9 +1046,21 @@ func AdminUserSettings(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/admin/settings?verification=unavailable#settings-notice", http.StatusSeeOther)
 			return
 		}
-		if err := sendVerificationEmail(currentUser.Email, currentUser.EmailVerificationToken); err != nil {
-			log.Printf("Error sending verification for admin=%d: %v", currentUser.ID, err)
-			renderUserSettings(w, r, currentUser, "Settings saved, but the verification email could not be sent. Please try resending it.", "warning", http.StatusBadGateway)
+		retryAfter, err := attemptVerification(r.Context(), currentUser)
+		if err != nil {
+			log.Printf("Error sending verification for admin=%d: %v", currentUser.ID, safeMailError(err))
+			status := http.StatusBadGateway
+			if errors.Is(err, ErrVerificationStorage) {
+				status = http.StatusInternalServerError
+			} else if errors.Is(err, ErrVerificationChanged) {
+				status = http.StatusConflict
+			}
+			renderUserSettings(w, r, currentUser, "Settings saved, but the verification email could not be sent. Reload settings before retrying.", "warning", status)
+			return
+		}
+		if retryAfter > 0 {
+			w.Header().Set("Retry-After", fmt.Sprint(int((retryAfter+time.Second-1)/time.Second)))
+			http.Redirect(w, r, "/admin/settings?verification=cooldown#settings-notice", http.StatusSeeOther)
 			return
 		}
 		http.Redirect(w, r, "/admin/settings?verification=sent#settings-notice", http.StatusSeeOther)
@@ -971,8 +1074,8 @@ func AdminChangePassword(w http.ResponseWriter, r *http.Request) {
 	newPassword := r.FormValue("new-password")
 	confirmPassword := r.FormValue("confirm-password")
 
-	if newPassword != confirmPassword {
-		http.Error(w, "New passwords do not match", http.StatusBadRequest)
+	if newPassword != confirmPassword || len(newPassword) == 0 || len(newPassword) > 72 {
+		http.Error(w, "New passwords must match and contain 1 to 72 bytes", http.StatusBadRequest)
 		return
 	}
 
@@ -989,12 +1092,26 @@ func AdminChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentUser.PasswordHash = newPasswordHash
-	result := db.Save(&currentUser)
+	token, err := generateAuthToken()
+	if err != nil {
+		http.Error(w, "Error updating password", http.StatusInternalServerError)
+		return
+	}
+	result := db.Model(&AdminUser{}).
+		Where("id = ? AND password_hash = ? AND session_token = ?", currentUser.ID, string(currentUser.PasswordHash), currentUser.SessionToken).
+		Updates(map[string]any{
+			"password_hash": string(newPasswordHash), "password_reset_token": "", "password_reset_expiry": 0,
+			"session_token": token, "session_expires_at": time.Now().Add(sessionLifetime).Unix(),
+		})
 	if result.Error != nil {
 		http.Error(w, "Error updating password", http.StatusInternalServerError)
 		return
 	}
+	if result.RowsAffected != 1 {
+		http.Error(w, "Your account changed. Sign in again before changing your password.", http.StatusConflict)
+		return
+	}
+	setSessionCookie(w, token)
 
 	http.Redirect(w, r, "/admin/settings", http.StatusSeeOther)
 }
@@ -1006,22 +1123,15 @@ func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var user AdminUser
-	result := db.Where(&AdminUser{EmailVerificationToken: token}).First(&user)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			http.Error(w, "Invalid token. It could be that the token is mispelled or, more likely, you've already confirmed your email. Verification tokens are single use!", http.StatusBadRequest)
-		} else {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	user.EmailVerified = true
-	user.EmailVerificationToken = "" // Clear the token after verification
-	result = db.Save(&user)
+	result := db.Model(&AdminUser{}).
+		Where("email_verification_token = ? AND (email_verified = ? OR email_verified IS NULL) AND email IS NOT NULL AND email != ''", token, false).
+		Updates(map[string]any{"email_verified": true, "email_verification_token": ""})
 	if result.Error != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if result.RowsAffected != 1 {
+		http.Error(w, "This verification link is invalid, already used, or superseded.", http.StatusBadRequest)
 		return
 	}
 
@@ -1035,25 +1145,25 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identifier := strings.TrimSpace(r.FormValue("username"))
-	if identifier == "" {
+	if !emailDeliveryEnabled() {
+		http.Error(w, "Password recovery email is unavailable on this instance. Contact the operator.", http.StatusServiceUnavailable)
+		return
+	}
+	identifier := r.FormValue("username")
+	if strings.TrimSpace(identifier) == "" {
 		identifier = strings.TrimSpace(r.FormValue("email"))
 	}
 
 	// Always show success to avoid user enumeration
-	var user AdminUser
-	var result *gorm.DB
-
-	if identifier != "" {
-		// Try lookup by username first
-		result = db.Where(&AdminUser{Username: identifier}).First(&user)
-		if result.Error != nil {
-			// Fallback to email lookup (only if verified)
-			result = db.Where(&AdminUser{Email: identifier, EmailVerified: true}).First(&user)
-		}
+	user, err := lookupUsername(identifier)
+	if errors.Is(err, gorm.ErrRecordNotFound) && strings.TrimSpace(identifier) != "" {
+		err = db.Where("email = ? AND email_verified = ?", strings.TrimSpace(identifier), true).First(&user).Error
 	}
-
-	if result == nil || result.Error != nil || user.Email == "" || !user.EmailVerified {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		recordLookupError(w, err, "account")
+		return
+	}
+	if err != nil || user.Email == "" || !user.EmailVerified {
 		renderAdminTemplate(w, r, "password_reset_sent", nil)
 		return
 	}
@@ -1067,15 +1177,20 @@ func ForgotPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	// Set token expiration (24 hours from now)
 	expiryTime := time.Now().Add(24 * time.Hour).Unix()
 
-	user.PasswordResetToken = token
-	user.PasswordResetExpiry = expiryTime
-	result = db.Save(&user)
+	result := db.Model(&AdminUser{}).
+		Where("id = ? AND email = ? AND email_verified = ? AND password_hash = ?", user.ID, user.Email, true, string(user.PasswordHash)).
+		Updates(map[string]any{"password_reset_token": token, "password_reset_expiry": expiryTime})
 	if result.Error != nil {
 		http.Error(w, "Error processing request", http.StatusInternalServerError)
 		return
 	}
-
-	go SendPasswordResetEmail(user.Email, token)
+	if result.RowsAffected == 1 {
+		if err := queueMail(fmt.Sprintf("password reset for admin=%d", user.ID), func(ctx context.Context) error {
+			return SendPasswordResetEmailContext(ctx, user.Email, token)
+		}); err != nil {
+			log.Printf("Queue password reset for admin=%d: %v", user.ID, err)
+		}
+	}
 
 	renderAdminTemplate(w, r, "password_reset_sent", nil)
 }
@@ -1089,13 +1204,17 @@ func ResetPasswordFormHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check if token is valid and not expired
 	var user AdminUser
-	result := db.Where(&AdminUser{PasswordResetToken: token}).First(&user)
+	result := db.Where("password_reset_token = ?", token).First(&user)
 	if result.Error != nil {
-		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		} else {
+			recordLookupError(w, result.Error, "account")
+		}
 		return
 	}
 
-	if user.PasswordResetExpiry < time.Now().Unix() {
+	if user.PasswordResetExpiry <= time.Now().Unix() {
 		http.Error(w, "Reset link has expired. Please request a new one.", http.StatusBadRequest)
 		return
 	}
@@ -1124,8 +1243,8 @@ func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if newPassword == "" || confirmPassword == "" {
-		http.Error(w, "Passwords cannot be empty", http.StatusBadRequest)
+	if newPassword == "" || confirmPassword == "" || len(newPassword) > 72 {
+		http.Error(w, "Password must contain 1 to 72 bytes", http.StatusBadRequest)
 		return
 	}
 
@@ -1135,13 +1254,17 @@ func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user AdminUser
-	result := db.Where(&AdminUser{PasswordResetToken: token}).First(&user)
+	result := db.Where("password_reset_token = ?", token).First(&user)
 	if result.Error != nil {
-		http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			http.Error(w, "Invalid reset link", http.StatusBadRequest)
+		} else {
+			recordLookupError(w, result.Error, "account")
+		}
 		return
 	}
 
-	if user.PasswordResetExpiry < time.Now().Unix() {
+	if user.PasswordResetExpiry <= time.Now().Unix() {
 		http.Error(w, "Reset link has expired. Please request a new one.", http.StatusBadRequest)
 		return
 	}
@@ -1152,16 +1275,26 @@ func ResetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update user's password and clear reset token
-	user.PasswordHash = newPasswordHash
-	user.PasswordResetToken = ""
-	user.PasswordResetExpiry = 0
-
-	result = db.Save(&user)
+	revokedToken, err := generateAuthToken()
+	if err != nil {
+		http.Error(w, "Error resetting password", http.StatusInternalServerError)
+		return
+	}
+	result = db.Model(&AdminUser{}).
+		Where("id = ? AND password_reset_token = ? AND password_reset_expiry > ?", user.ID, token, time.Now().Unix()).
+		Updates(map[string]any{
+			"password_hash": string(newPasswordHash), "password_reset_token": "", "password_reset_expiry": 0,
+			"session_token": revokedToken, "session_expires_at": 0,
+		})
 	if result.Error != nil {
 		http.Error(w, "Error resetting password", http.StatusInternalServerError)
 		return
 	}
+	if result.RowsAffected != 1 {
+		http.Error(w, "This reset link is expired, already used, or superseded.", http.StatusBadRequest)
+		return
+	}
+	clearSessionCookie(w)
 
 	http.Redirect(w, r, "/admin/signin?password_reset=success", http.StatusSeeOther)
 }

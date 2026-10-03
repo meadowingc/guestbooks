@@ -7,10 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
-	"strings"
-	"syscall"
 	textTemplate "text/template"
 	"time"
 
@@ -37,78 +34,51 @@ var databaseLogger = logger.New(log.Default(), logger.Config{
 })
 
 func main() {
+	if err := runApplication(); err != nil {
+		log.Printf("Application stopped: %v", err)
+		os.Exit(1)
+	}
+}
+
+func loadConfiguration() error {
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Fatalf("config.yaml not found in the working directory. " +
+			return fmt.Errorf("config.yaml not found in the working directory. " +
 				"Copy config.example.yaml to config.yaml and edit it before starting. " +
-				"For Docker, mount it with `-v $(pwd)/config.yaml:/app/config.yaml:ro`.")
+				"For Docker, mount it with `-v $(pwd)/config.yaml:/app/config.yaml:ro`")
 		}
-		panic(fmt.Errorf("fatal error config file: %w", err))
+		return fmt.Errorf("read configuration: %w", err)
 	}
-
-	initDatabase()
-	initCache()
-	initRuntimeConfig()
-
-	// Initialize proof-of-work challenge store and start cleanup loop
-	powChallengeStore = NewChallengeStore()
-	powChallengeStore.StartCleanupLoop()
-
-	// Setup a channel to listen for termination signals
-	signals := make(chan os.Signal, 1)
-	// Notify signals channel on SIGINT and SIGTERM
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-
-	r := initRouter()
-
-	portNum := fmt.Sprintf(":%d", appConfig.Port)
-	go func() {
-		log.Printf("Running on http://localhost%s (public URL: %s)", portNum, appConfig.PublicURL)
-		if err := http.ListenAndServe(portNum, r); err != nil {
-			log.Printf("HTTP server stopped: %v", err)
-		}
-	}()
-
-	// Block until a signal is received
-	<-signals
-	log.Println("Shutting down gracefully...")
-
-	// Close the database connection
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Printf("Error on closing database connection: %v", err)
-	} else {
-		if err := sqlDB.Close(); err != nil {
-			log.Printf("Error on closing database connection: %v", err)
-		}
-	}
+	return initRuntimeConfig()
 }
 
-func initDatabase() {
+func initDatabase() error {
 	var err error
-	db, err = gorm.Open(sqlite.Open("file:guestbook.db?cache=shared&mode=rwc&_journal_mode=WAL"), &gorm.Config{Logger: databaseLogger})
+	db, err = gorm.Open(sqlite.Open("file:guestbook.db?mode=rwc&_journal_mode=WAL&_busy_timeout=5000"), &gorm.Config{Logger: databaseLogger})
 	if err != nil {
-		log.Fatalf("failed to connect database: %v", err)
+		return fmt.Errorf("connect database: %w", err)
 	}
 
 	// Migrate the schema
 	err = db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{})
 	if err != nil {
-		log.Fatalf("failed to migrate database: %v", err)
+		return fmt.Errorf("migrate database: %w", err)
 	}
+	return nil
 }
 
-func initCache() {
+func initCache() error {
 	var err error
 	// Initialize cache with 1000 entries and 10 minute TTL
 	messageCache, err = NewMessageCache(1000, 10*time.Minute)
 	if err != nil {
-		log.Fatalf("failed to initialize cache: %v", err)
+		return fmt.Errorf("initialize cache: %w", err)
 	}
 	log.Println("Message cache initialized (size: 1000, TTL: 10m)")
+	return nil
 }
 
 func initRouter() *chi.Mux {
@@ -119,7 +89,7 @@ func initRouter() *chi.Mux {
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Guestbooks-Fresh-Proof"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	})
@@ -127,64 +97,40 @@ func initRouter() *chi.Mux {
 	r.Use(CORSMiddleware.Handler)
 	r.Use(RealIPMiddleware)
 	r.Use(Logger)
-	r.Use(httprate.LimitByIP(100, time.Minute)) // general rate limiter for all routes (shared across all routes)
+	r.Use(func(next http.Handler) http.Handler {
+		limited := httprate.LimitByIP(100, time.Minute)(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/healthz" {
+				next.ServeHTTP(w, r)
+			} else {
+				limited.ServeHTTP(w, r)
+			}
+		})
+	})
 	r.Use(middleware.Recoverer)
+	r.Get("/healthz", HealthHandler)
 
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		renderAdminTemplate(w, r, "landing_page", nil)
 	})
 
 	r.Get("/verify-email", VerifyEmailHandler)
-	r.Get("/reset-password", ResetPasswordFormHandler)
-	r.Post("/reset-password", ResetPasswordHandler)
+	r.With(adminCSRF).Get("/reset-password", ResetPasswordFormHandler)
+	r.With(adminCSRF).Post("/reset-password", ResetPasswordHandler)
 
 	r.Get("/terms-and-conditions", func(w http.ResponseWriter, r *http.Request) {
 		renderAdminTemplate(w, r, "terms_and_conditions", nil)
 	})
 
-	r.Get("/forgot-password", ForgotPasswordHandler)
-	r.Post("/forgot-password", ForgotPasswordHandler)
+	r.With(adminCSRF).Get("/forgot-password", ForgotPasswordHandler)
+	r.With(adminCSRF).Post("/forgot-password", ForgotPasswordHandler)
 
-	r.With(AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
-		// Basic CSRF guard for state-changing requests: allow only same-origin POSTs.
-		r.Use(func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete {
-					origin := r.Header.Get("Origin")
-					referer := r.Header.Get("Referer")
-					// In production, server.public_url should be the absolute origin like https://example.com
-					allowed := PublicURL()
-					if constants.DEBUG_MODE {
-						// Accept current host as origin in debug
-						allowed = "//" + r.Host
-					}
-
-					// If an Origin is present, require it to contain the allowed host; otherwise, use Referer as a fallback.
-					if origin != "" {
-						if !strings.Contains(origin, r.Host) && !strings.Contains(origin, strings.TrimPrefix(allowed, "//")) {
-							http.Error(w, "CSRF check failed", http.StatusForbidden)
-							return
-						}
-					} else if referer != "" {
-						if !strings.Contains(referer, r.Host) && !strings.Contains(referer, strings.TrimPrefix(allowed, "//")) {
-							http.Error(w, "CSRF check failed", http.StatusForbidden)
-							return
-						}
-					}
-				}
-				next.ServeHTTP(w, r)
-			})
-		})
+	r.With(adminCSRF, AdminAuthMiddleware).Route("/admin", func(r chi.Router) {
 		r.Get("/", AdminGuestbookList)
 		r.Get("/settings", AdminUserSettings)
 
 		r.Post("/settings", AdminUserSettings)
-		r.With(httprate.Limit(1, time.Minute,
-			httprate.WithKeyFuncs(func(r *http.Request) (string, error) {
-				return strconv.FormatUint(uint64(getSignedInAdminOrFail(r).ID), 10), nil
-			}),
-			httprate.WithLimitHandler(AdminVerificationRateLimited),
-		)).Post("/settings/resend-verification", AdminResendVerification)
+		r.Post("/settings/resend-verification", AdminResendVerification)
 		r.Post("/change-password", AdminChangePassword)
 
 		r.Get("/signin", AdminSignIn)
@@ -201,6 +147,7 @@ func initRouter() *chi.Mux {
 		r.Post("/guestbook/new", AdminCreateGuestbook)
 
 		r.Route("/guestbook/{guestbookID}", func(r chi.Router) {
+			r.Use(validRouteIDs)
 			r.Get("/", AdminShowGuestbook)
 			r.Get("/embed", AdminEmbedGuestbook)
 
@@ -213,6 +160,7 @@ func initRouter() *chi.Mux {
 			r.Post("/messages/bulk-approve", AdminBulkApproveMessages)
 
 			r.Route("/message/{messageID}", func(r chi.Router) {
+				r.Use(validRouteIDs)
 				r.Get("/edit", AdminEditMessage)
 				r.Post("/edit", AdminEditMessage)
 				r.Post("/delete", AdminDeleteMessage)
@@ -222,19 +170,22 @@ func initRouter() *chi.Mux {
 	})
 
 	r.Route("/guestbook", func(r chi.Router) {
-		r.Get("/{guestbookID}", GuestbookPage)
+		r.With(validRouteIDs).Get("/{guestbookID}", GuestbookPage)
 
 		// this means the user has at most N attempts to submit a message to a given guestbook in a minute
 		submitRateLimiter := httprate.Limit(
 			5,           // requests
 			time.Minute, // per duration
-			httprate.WithKeyFuncs(httprate.KeyByIP, httprate.KeyByEndpoint),
+			httprate.WithKeyFuncs(httprate.KeyByIP, func(r *http.Request) (string, error) {
+				id, err := parsePositiveID(chi.URLParam(r, "guestbookID"))
+				return strconv.FormatUint(uint64(id), 10), err
+			}),
 			httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, `Rate limited. Please slow down.`, http.StatusTooManyRequests)
 			}),
 		)
 
-		r.With(submitRateLimiter).
+		r.With(validRouteIDs, submitRateLimiter).
 			Post("/{guestbookID}/submit", GuestbookSubmit)
 	})
 
@@ -243,11 +194,13 @@ func initRouter() *chi.Mux {
 
 	r.Route("/resources", func(r chi.Router) {
 		r.Route("/js", func(r chi.Router) {
-			r.Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
+			r.With(validRouteIDs).Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
 				guestbookID := chi.URLParam(r, "guestbookID")
 				template, err := textTemplate.ParseFiles("templates/resources/embed_javascript.js")
 				if err != nil {
-					log.Fatalf("Error parsing guestbook page template: %v", err)
+					log.Printf("Error parsing embed script: %v", err)
+					http.Error(w, "Embed script unavailable", http.StatusInternalServerError)
+					return
 				}
 
 				hostUrl := PublicURL()
@@ -256,9 +209,9 @@ func initRouter() *chi.Mux {
 				}
 
 				var guestbook Guestbook
-				result := db.First(&guestbook, guestbookID)
+				result := activeGuestbooksQuery(db.WithContext(r.Context())).First(&guestbook, "guestbooks.id = ?", guestbookID)
 				if result.Error != nil {
-					http.Error(w, "Guestbook not found", http.StatusInternalServerError)
+					recordLookupError(w, result.Error, "Guestbook")
 					return
 				}
 
@@ -274,7 +227,14 @@ func initRouter() *chi.Mux {
 					CollectEmail           bool   `json:"collectEmail"`
 					MaxEmailBytes          int    `json:"maxEmailBytes"`
 					ChallengeFailedMessage string `json:"challengeFailedMessage"`
-				}{guestbook.CollectEmail, maxEmailBytes, guestbook.ChallengeFailedMessage})
+					Question               string `json:"question"`
+					Hint                   string `json:"hint"`
+					MaxMessageCharacters   int    `json:"maxMessageCharacters"`
+					MaxNameCharacters      int    `json:"maxNameCharacters"`
+					MaxWebsiteBytes        int    `json:"maxWebsiteBytes"`
+				}{guestbook.CollectEmail, maxEmailBytes, guestbook.ChallengeFailedMessage,
+					guestbook.ChallengeQuestion, guestbook.ChallengeHint,
+					constants.MAX_MESSAGE_LENGTH, maxNameCharacters, maxWebsiteBytes})
 				if err != nil {
 					http.Error(w, "Error rendering embed configuration", http.StatusInternalServerError)
 					return
@@ -282,134 +242,18 @@ func initRouter() *chi.Mux {
 				templateData.ConfigJSON = string(configJSON)
 
 				w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-				template.Execute(w, templateData)
+				if err := template.Execute(w, templateData); err != nil {
+					log.Printf("Render embed script: %v", err)
+				}
 			})
 		})
 	})
+	r.With(validRouteIDs).Get("/resources/css/guestbook/{guestbookID}.css", GuestbookStyles)
 
-	r.Get("/api/pow-challenge/{guestbookID}", PowChallengeHandler)
+	r.With(validRouteIDs).Get("/api/pow-challenge/{guestbookID}", PowChallengeHandler)
 
-	r.Route("/api", func(r chi.Router) {
-		r.Route("/v1", func(r chi.Router) {
-			r.Get("/get-guestbook-messages/{guestbookID}", func(w http.ResponseWriter, r *http.Request) {
-				guestbookID := chi.URLParam(r, "guestbookID")
-				guestbookIDUint, err := strconv.ParseUint(guestbookID, 10, 32)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				// Try to get from cache first
-				if cachedMessages, ok := messageCache.GetMessages(uint(guestbookIDUint)); ok {
-					w.Header().Set("Content-Type", "application/json")
-					w.Header().Set("X-Cache", "HIT")
-					json.NewEncoder(w).Encode(cachedMessages)
-					return
-				}
-
-				// v1 API - return all messages at top level of response, without pagination (backward compatibility)
-				var messages []Message
-				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true, ParentMessageID: nil}).
-					Order("created_at DESC").
-					Preload("Replies", "approved = ?", true).
-					Find(&messages)
-				if result.Error != nil {
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-					return
-				}
-
-				// Store in cache
-				messageCache.SetMessages(uint(guestbookIDUint), messages)
-
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("X-Cache", "MISS")
-				json.NewEncoder(w).Encode(messages)
-			})
-		})
-
-		r.Route("/v2", func(r chi.Router) {
-			r.Get("/get-guestbook-messages/{guestbookID}", func(w http.ResponseWriter, r *http.Request) {
-				guestbookID := chi.URLParam(r, "guestbookID")
-				guestbookIDUint, err := strconv.ParseUint(guestbookID, 10, 32)
-				if err != nil {
-					log.Fatal(err)
-				}
-
-				pageStr := r.URL.Query().Get("page")
-				limitStr := r.URL.Query().Get("limit")
-
-				page := 1
-				limit := 20 // Default page size
-
-				if pageStr != "" {
-					if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-						page = p
-					}
-				}
-
-				if limitStr != "" {
-					if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-						limit = l
-					}
-				}
-
-				// Try to get from cache first
-				if cachedResponse, ok := messageCache.GetPaginatedResponse(uint(guestbookIDUint), page, limit); ok {
-					w.Header().Set("Content-Type", "application/json")
-					w.Header().Set("X-Cache", "HIT")
-					json.NewEncoder(w).Encode(cachedResponse)
-					return
-				}
-
-				offset := (page - 1) * limit
-
-				// Try to get count from cache
-				var totalCount int64
-				var countCached bool
-				if totalCount, countCached = messageCache.GetCount(uint(guestbookIDUint)); !countCached {
-					countResult := db.Model(&Message{}).Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true}).Count(&totalCount)
-					if countResult.Error != nil {
-						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-						return
-					}
-					messageCache.SetCount(uint(guestbookIDUint), totalCount)
-				}
-
-				var messages []Message
-				result := db.Where(&Message{GuestbookID: uint(guestbookIDUint), Approved: true, ParentMessageID: nil}).
-					Order("created_at DESC").
-					Preload("Replies", "approved = ?", true).
-					Limit(limit).
-					Offset(offset).
-					Find(&messages)
-				if result.Error != nil {
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-					return
-				}
-
-				totalPages := int((totalCount + int64(limit) - 1) / int64(limit))
-
-				response := map[string]any{
-					"messages": messages,
-					"pagination": map[string]any{
-						"page":        page,
-						"limit":       limit,
-						"total":       totalCount,
-						"totalPages":  totalPages,
-						"hasNext":     page < totalPages,
-						"hasPrevious": page > 1,
-					},
-				}
-
-				// Store in cache
-				messageCache.SetPaginatedResponse(uint(guestbookIDUint), page, limit, response)
-
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("X-Cache", "MISS")
-
-				json.NewEncoder(w).Encode(response)
-			})
-		})
-	})
+	r.Get("/api/v1/get-guestbook-messages/{guestbookID}", PublicMessagesV1)
+	r.Get("/api/v2/get-guestbook-messages/{guestbookID}", PublicMessagesV2)
 
 	return r
 }
@@ -515,14 +359,8 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 // for when the app is running behind a reverse proxy
 func RealIPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			// This assumes the first IP in the X-Forwarded-For list is the client's real IP
-			// This may need to be adjusted depending on your reverse proxy setup
-			i := strings.Index(xff, ", ")
-			if i == -1 {
-				i = len(xff)
-			}
-			r.RemoteAddr = xff[:i]
+		if address := clientAddress(r); address.IsValid() {
+			r.RemoteAddr = address.String()
 		}
 		next.ServeHTTP(w, r)
 	})

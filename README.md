@@ -85,10 +85,74 @@ go build -tags release -o guestbooks .
 
 ```bash
 task run       # go run .
-task test      # go test
+task test      # unit/handler, Chromium browser, and maintenance-script tests
+task test-unit # no browser required
+task test-browser # explicit browser coverage
 task lint      # go vet + staticcheck + exhaustive
 task dev       # air live-reload
 ```
+
+Unit tests use temporary SQLite databases. Browser tests require Chromium
+(Rod can download its browser when first needed) and are enabled explicitly
+with `go test -tags browser ./...`. Use `-tags browser,release` for production
+behavior. `task release` also validates both build modes before building.
+For reproducible browser checks, explicitly select an installed Chrome or
+Chromium binary. Both complete build-mode suites are validated with Chrome
+for Testing 145.0.7632.6. Rod's older automatic Chromium 128 fallback showed
+intermittent renderer hangs in our environment; those hangs are not resolved.
+
+```bash
+CHROME=/path/to/chrome
+go test -tags browser -count=1 -timeout 5m ./... -args -rod=bin="$CHROME"
+go test -tags browser,release -count=1 -timeout 5m ./... -args -rod=bin="$CHROME"
+```
+
+The maintenance-script tests need Python 3 and the same bcrypt dependency as
+the offline password-reset helper:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r scripts/requirements.txt
+source .venv/bin/activate
+task test-scripts
+```
+
+## Reliability and compatibility notes
+
+Admin sessions now expire after 30 days, and upgrading requires one fresh
+sign-in. Logout and password reset revoke the previous session. Password
+changes rotate the session and invalidate outstanding reset links.
+Admin forms and automated admin mutations require a CSRF token and cookie;
+public cross-origin guestbook submissions remain supported.
+
+Messages and replies accept up to 2,500 Unicode characters, visitor names up
+to 200, and website values up to 2,048 bytes. Empty required fields and bodies
+over 64 KiB are rejected regardless of content type. New message/reply writes
+normalize CRLF and CR newlines to LF before counting and storage, so browser
+form serialization does not change the character limit. PoW embeds require
+HTTPS (or a browser-recognized secure localhost context); unsupported
+browsers/pages show an explicit error.
+
+Both public API versions retain their response shapes. Pagination now counts
+root messages rather than replies, which appear only beneath approved,
+active parents. Missing/deleted guestbooks are unavailable, invalid IDs return
+client errors, and deleted content cannot reappear through cached responses.
+Historical orphan replies are hidden from direct admin editing as well as
+moderation lists. Books without an active owner cannot serve embeds or issue
+PoW challenges. Multi-statement SQLite writes reserve the writer before
+checking ancestry; read-only API snapshots remain concurrent with writers.
+
+Custom CSS is delivered as a stylesheet rather than trusted inline HTML.
+Valid custom styles and permitted HTTPS fonts remain supported; unsafe saved
+styles require owner repair. The unreliable optional Format button has been
+removed. Existing hosted, iframe, and service-hosted JavaScript embeds receive
+the fixes without replacing their copied form markup.
+Valid nested conditional styles remain supported, and built-in theme settings
+can be saved even if the editor's theme download is slow or fails. Reloading
+the embed script after replacing either its form or messages container
+reinitializes the embed.
+Built-in themes also wrap long website titles, visitor names, and unbroken
+message/reply text instead of forcing horizontal scrolling.
 
 ## License
 

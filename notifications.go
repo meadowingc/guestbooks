@@ -1,14 +1,23 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log"
+	"math"
 	"net/http"
-
-	"github.com/spf13/viper"
+	"strconv"
+	"time"
 )
 
-var sendVerificationEmail = SendVerificationEmail
+var sendVerificationEmail = SendVerificationEmailContext
 var sendMessageNotification = notifyGuestbookOwner
+
+var (
+	ErrVerificationChanged = errors.New("email verification settings changed")
+	ErrVerificationStorage = errors.New("email verification could not be saved")
+)
 
 type notificationStatus struct {
 	State      string
@@ -18,12 +27,8 @@ type notificationStatus struct {
 }
 
 func emailDeliveryEnabled() bool {
-	switch viper.GetString("mailer.mailer_name") {
-	case "smtp", "azure_communication_service":
-		return true
-	default:
-		return false
-	}
+	config, err := readMailerConfig()
+	return err == nil && config.provider != "none"
 }
 
 func notificationStatusFor(user *AdminUser) notificationStatus {
@@ -86,35 +91,91 @@ func AdminResendVerification(w http.ResponseWriter, r *http.Request) {
 		renderUserSettings(w, r, user, "Your email address is already verified.", "info", http.StatusConflict)
 		return
 	}
-	if !emailDeliveryEnabled() {
+	retryAfter, err := attemptVerification(r.Context(), user)
+	if errors.Is(err, ErrMailDisabled) {
 		renderUserSettings(w, r, user, "No email was sent: email delivery is disabled on this instance.", "warning", http.StatusServiceUnavailable)
 		return
 	}
-	if user.EmailVerificationToken == "" {
-		token, err := generateAuthToken()
-		if err != nil {
-			http.Error(w, "Error creating verification token", http.StatusInternalServerError)
-			return
-		}
-		result := db.Model(&AdminUser{}).
-			Where("id = ? AND email = ? AND (email_verified = ? OR email_verified IS NULL) AND (email_verification_token = '' OR email_verification_token IS NULL)", user.ID, user.Email, false).
-			Update("email_verification_token", token)
-		if result.Error != nil {
-			http.Error(w, "Error saving verification token", http.StatusInternalServerError)
-			return
-		}
-		if result.RowsAffected != 1 {
-			renderUserSettings(w, r, user, "Your email settings changed. Reload settings before trying again.", "warning", http.StatusConflict)
-			return
-		}
-		user.EmailVerificationToken = token
+	if retryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retryAfter.Seconds()))))
+		renderUserSettings(w, r, user, "Please wait one minute between verification email requests.", "warning", http.StatusTooManyRequests)
+		return
 	}
-	if err := sendVerificationEmail(user.Email, user.EmailVerificationToken); err != nil {
-		log.Printf("Error resending verification for admin=%d: %v", user.ID, err)
+	if errors.Is(err, ErrVerificationChanged) {
+		renderUserSettings(w, r, user, "Your email settings changed. Reload settings before trying again.", "warning", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, ErrVerificationStorage) {
+		log.Printf("Error reserving verification attempt for admin=%d", user.ID)
+		http.Error(w, "Error saving verification attempt", http.StatusInternalServerError)
+		return
+	}
+	if err != nil {
+		log.Printf("Error resending verification for admin=%d: %v", user.ID, safeMailError(err))
 		renderUserSettings(w, r, user, "The verification email could not be sent. Please try again after the resend cooldown.", "warning", http.StatusBadGateway)
 		return
 	}
 	http.Redirect(w, r, "/admin/settings?verification=sent#settings-notice", http.StatusSeeOther)
+}
+
+// Reservation survives failed sends, process restarts, and changes of address.
+func attemptVerification(ctx context.Context, user *AdminUser) (time.Duration, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if user == nil || user.ID == 0 || user.Email == "" || user.EmailVerified {
+		return 0, ErrVerificationChanged
+	}
+	snapshot, err := mailSnapshotForContext(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if snapshot.config.provider == "none" {
+		return 0, ErrMailDisabled
+	}
+	token := user.EmailVerificationToken
+	if token == "" {
+		token, err = generateAuthToken()
+		if err != nil {
+			return 0, fmt.Errorf("%w: token creation failed", ErrVerificationStorage)
+		}
+	}
+	now := time.Now()
+	query := db.WithContext(ctx).Model(&AdminUser{}).
+		Where("id = ? AND email = ? AND (email_verified = ? OR email_verified IS NULL)", user.ID, user.Email, false).
+		Where("(verification_attempt_at IS NULL OR verification_attempt_at <= ?)", now.Add(-time.Minute).Unix())
+	if user.EmailVerificationToken == "" {
+		query = query.Where("(email_verification_token = '' OR email_verification_token IS NULL)")
+	} else {
+		query = query.Where("email_verification_token = ?", user.EmailVerificationToken)
+	}
+	result := query.Updates(map[string]any{
+		"email_verification_token": token,
+		"verification_attempt_at":  now.Unix(),
+	})
+	if result.Error != nil {
+		return 0, ErrVerificationStorage
+	}
+	if result.RowsAffected != 1 {
+		var current AdminUser
+		if err := db.WithContext(ctx).First(&current, user.ID).Error; err != nil {
+			return 0, ErrVerificationStorage
+		}
+		if current.Email != user.Email || current.EmailVerified {
+			return 0, ErrVerificationChanged
+		}
+		retryAfter := time.Unix(current.VerificationAttemptAt, 0).Add(time.Minute).Sub(now)
+		if retryAfter > 0 {
+			*user = current
+			return retryAfter, nil
+		}
+		return 0, ErrVerificationChanged
+	}
+	user.EmailVerificationToken = token
+	user.VerificationAttemptAt = now.Unix()
+	sendCtx, cancel := context.WithTimeout(context.WithValue(ctx, mailSnapshotKey{}, snapshot), mailSendTimeout)
+	defer cancel()
+	return 0, sendVerificationEmail(sendCtx, user.Email, token)
 }
 
 func AdminVerificationRateLimited(w http.ResponseWriter, r *http.Request) {

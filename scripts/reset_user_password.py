@@ -19,6 +19,7 @@ import argparse
 import sqlite3
 import secrets
 import string
+from pathlib import Path
 
 try:
     import bcrypt
@@ -68,7 +69,8 @@ def resolve_user(cursor, args):
 
 
 def main(args):
-    conn = sqlite3.connect('guestbook.db')
+    database = Path(args.database).resolve()
+    conn = sqlite3.connect(database.as_uri() + "?mode=rw", uri=True)
     cursor = conn.cursor()
 
     # Look up the user
@@ -99,9 +101,14 @@ def main(args):
     # Update the database
     # The Go code stores PasswordHash as datatypes.JSON but it's actually just the hash bytes
     cursor.execute(
-        "UPDATE admin_users SET password_hash=? WHERE id=?",
-        (password_hash.decode('utf-8'), user_id)
+        "UPDATE admin_users SET password_hash=?, session_token=?, session_expires_at=0, "
+        "password_reset_token='', password_reset_expiry=0 WHERE id=? AND deleted_at IS NULL",
+        (password_hash.decode('utf-8'), secrets.token_urlsafe(32), user_id)
     )
+    if cursor.rowcount != 1:
+        conn.rollback()
+        conn.close()
+        sys.exit("Password reset failed: account no longer exists or is deleted.")
     conn.commit()
 
     print()
@@ -124,6 +131,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Reset a user's password manually."
     )
+    parser.add_argument("--database", default="guestbook.db", help="Existing SQLite database; stop the service first")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--user-id", type=int, help="Look up user by their ID")
     group.add_argument("--username", type=str, help="Look up user by their username")

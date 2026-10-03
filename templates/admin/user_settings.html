@@ -17,6 +17,7 @@
         </p>
         
         <form id="display-name-settings-form" method="post" action="/admin/settings">
+            {{.CSRFField}}
             <input type="hidden" name="settings_section" value="display_name">
             <div class="form-group">
                 <label for="display_name">Display Name</label>
@@ -42,6 +43,7 @@
         {{end}}
 
         <form id="email-settings-form" method="post" action="/admin/settings">
+            {{.CSRFField}}
             <input type="hidden" name="settings_section" value="email">
             <div class="form-group">
                 <label for="email">Email Address</label>
@@ -65,6 +67,7 @@
         </form>
         {{if .NotificationStatus.CanResend}}
         <form method="post" action="/admin/settings/resend-verification">
+            {{.CSRFField}}
             <button type="submit" class="btn btn-outline">Resend verification email</button>
             <p class="form-hint">Check your spam folder too. You can request another verification email once per minute.</p>
         </form>
@@ -78,6 +81,7 @@
         </p>
         
         <form method="post" action="/admin/change-password">
+            {{.CSRFField}}
             <div class="form-group">
                 <label for="current-password">Current Password</label>
                 <input type="password" id="current-password" name="current-password" required>

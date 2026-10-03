@@ -3,6 +3,7 @@
 #
 # Run (mount your config.yaml and a data volume for the SQLite DB):
 #   docker run -d --name guestbooks \
+#     --stop-timeout 40 \
 #     -p 6235:6235 \
 #     -v $(pwd)/config.yaml:/app/config.yaml:ro \
 #     -v guestbooks-data:/app/data \
@@ -46,7 +47,7 @@ VOLUME ["/app/data"]
 EXPOSE 6235
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -q --spider http://localhost:6235/ || exit 1
+    CMD ["/app/guestbooks", "healthcheck"]
 
 USER guestbooks
 CMD ["./guestbooks"]

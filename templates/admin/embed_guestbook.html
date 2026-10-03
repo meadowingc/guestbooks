@@ -67,6 +67,7 @@
                         </button>
                     </div>
                     <pre class="line-numbers"><code id="iframe-code" class="language-html">&lt;iframe 
+  title="Guestbook for {{.Data.Guestbook.WebsiteURL}}"
   src="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}" 
   width="100%" 
   height="600" 
@@ -114,13 +115,14 @@
                         </button>
                     </div>
                     <pre class="line-numbers"><code id="js-code" class="language-html">&lt;!-- Guestbook Script --&gt;
-&lt;script async src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js"&gt;&lt;/script&gt;
+&lt;script defer src="{{.Data.PublicHostUrl}}/resources/js/embed_script/{{.Data.Guestbook.ID}}/script.js"&gt;&lt;/script&gt;
 &lt;!-- Guestbook Form --&gt;
 &lt;div id="guestbooks___guestbook-form-container"&gt;
   &lt;form id="guestbooks___guestbook-form" 
         action="{{.Data.PublicHostUrl}}/guestbook/{{.Data.Guestbook.ID}}/submit" 
         method="post"&gt;
     &lt;div class="guestbooks___input-container"&gt;
+      &lt;label for="name"&gt;Name&lt;/label&gt;
       &lt;input type="text" 
              id="name" 
              name="name" 
@@ -128,6 +130,7 @@
              required&gt;
     &lt;/div&gt;
     &lt;div class="guestbooks___input-container"&gt;
+      &lt;label for="website"&gt;Website (optional)&lt;/label&gt;
       &lt;input type="url" 
              id="website" 
              name="website" 
@@ -136,6 +139,7 @@
     {{.Data.EmailFieldHTML}}
     &lt;div id="guestbooks___challenge-answer-container"&gt;&lt;/div&gt;
     &lt;div class="guestbooks___input-container"&gt;
+      &lt;label for="text"&gt;Message&lt;/label&gt;
       &lt;textarea id="text" 
                 name="text" 
                 placeholder="Leave your message here..." 
@@ -161,6 +165,8 @@
                 <div class="callout callout-warning mt-3">
                     <p class="text-small" style="margin: 0;">
                         <strong>⚠️ Important:</strong> Don't change the <code>name</code> attributes or element <code>id</code>s - they're required for the form to work properly!
+                        Proof of Work requires your page to use HTTPS (secure localhost development is supported).
+                        Messages are limited to 2,500 Unicode characters, names to 200 characters, and website URLs to 2,048 bytes.
                     </p>
                 </div>
 

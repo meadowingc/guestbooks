@@ -61,12 +61,14 @@ type AdminUser struct {
 	DisplayName            string         `gorm:""`
 	PasswordHash           datatypes.JSON `gorm:"type:json"`
 	SessionToken           string         `gorm:"index;unique"`
+	SessionExpiresAt       int64          `gorm:"default:0"`
 	Email                  string         `gorm:""`
 	EmailVerified          bool           `gorm:"default:false"`
 	EmailVerificationToken string         `gorm:"index"`
 	PasswordResetToken     string         `gorm:"index"`
 	PasswordResetExpiry    int64          `gorm:""`
 	EmailNotifications     bool           `gorm:""`
+	VerificationAttemptAt  int64          `gorm:"default:0"`
 	Guestbooks             []Guestbook    `gorm:"foreignKey:AdminUserID"`
 }
 

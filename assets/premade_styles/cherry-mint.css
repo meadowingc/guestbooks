@@ -18,6 +18,7 @@ a:hover {
 
 .container {
   background: #dff7d5;
+  overflow-wrap: anywhere;
   border-radius: 5px;
   border: 1px solid #618a50;
   box-shadow: 2px 2px #3c5832;
