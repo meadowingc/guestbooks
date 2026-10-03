@@ -112,7 +112,10 @@ class NoRedirect(HTTPRedirectHandler):
 
 def request(url, fields=None, headers=None):
     body = None if fields is None else urlencode(fields).encode("ascii")
-    outgoing = Request(url, data=body, headers=headers or {})
+    outgoing = Request(url, data=body, headers={
+        "User-Agent": "GuestbooksDeploymentCheck/1.0",
+        **(headers or {}),
+    })
     try:
         response = build_opener(ProxyHandler({}), NoRedirect()).open(outgoing, timeout=10)
     except HTTPError as error:
@@ -135,15 +138,16 @@ class TokenParser(HTMLParser):
 
 
 def check_forms(public_url, local_url="http://127.0.0.1:6235"):
-    status, _, body = request(public_url + "/healthz")
-    require(status == 200 and body.strip() == b"ok", "Public health check failed")
+    status, headers, body = request(public_url + "/healthz")
+    challenge = " (Cloudflare challenge)" if headers.get("cf-mitigated") == "challenge" else ""
+    require(status == 200 and body.strip() == b"ok", f"Public health check failed: HTTP {status}{challenge}")
     fields = {"username": "__deployment_probe_" + uuid.uuid4().hex, "password": uuid.uuid4().hex}
     for origin in (local_url, public_url):
         status, headers, body = request(origin + "/admin/signin")
         parser = TokenParser()
         parser.feed(body.decode("utf-8"))
         token = headers.get("X-CSRF-Token")
-        require(status == 200 and token and token in parser.tokens, "Sign-in form/token check failed")
+        require(status == 200 and token and token in parser.tokens, f"Sign-in form/token check failed: HTTP {status}")
         cookies = SimpleCookie()
         for value in headers.get_all("Set-Cookie", []):
             cookies.load(value)
@@ -155,7 +159,7 @@ def check_forms(public_url, local_url="http://127.0.0.1:6235"):
         status, _, body = request(public_url + "/admin/signin", fields, outgoing)
         # A token minted locally must also work through the public proxy route.
         require(status == 401 and b"Invalid username or password" in body,
-                "Public sign-in POST did not reach authentication")
+                f"Public sign-in POST did not reach authentication: HTTP {status}")
     status, _, _ = request(public_url + "/admin/signin",
                            {key: value for key, value in fields.items() if key != "gorilla.csrf.Token"}, outgoing)
     require(status == 403, "Missing-token CSRF rejection failed")

@@ -386,6 +386,8 @@ backup, atomically switches the release link, and restarts. Health and actual
 HTTPS sign-in form POSTs are checked again, including CSRF rejection. Probes
 use random invalid credentials: no production account/message is created and
 no mail is sent. This is not a substitute for an authenticated browser check.
+HTTP probes identify themselves as `GuestbooksDeploymentCheck/1.0` rather than
+Python's default user agent, which some edge protections challenge.
 Reload open admin forms after the restart.
 
 Deployment is serialized with a lock and runs in a transient systemd unit.

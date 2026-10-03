@@ -320,9 +320,11 @@ class InputAndProbeTests(unittest.TestCase):
 
     def test_http_does_not_follow_redirects_or_forward_tokens(self):
         visits = []
+        agents = []
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 visits.append(self.path)
+                agents.append(self.headers.get("User-Agent"))
                 self.send_response(302)
                 self.send_header("Location", "/must-not-follow")
                 self.end_headers()
@@ -338,9 +340,18 @@ class InputAndProbeTests(unittest.TestCase):
                                                {"gorilla.csrf.Token": "synthetic"})
                 self.assertEqual(status, 302)
                 self.assertEqual(visits, ["/signin"])
+                self.assertEqual(agents, ["GuestbooksDeploymentCheck/1.0"])
             finally:
                 server.shutdown()
                 thread.join()
+
+    def test_health_failure_identifies_edge_challenges_without_logging_body(self):
+        headers = Message()
+        headers["cf-mitigated"] = "challenge"
+        with patch("deploy_vps.request", return_value=(403, headers, b"private diagnostic body")):
+            with self.assertRaisesRegex(deploy.DeploymentError, r"HTTP 403 \(Cloudflare challenge\)") as raised:
+                deploy.check_forms("https://example.test")
+        self.assertNotIn("private diagnostic body", str(raised.exception))
 
 
 if __name__ == "__main__":
