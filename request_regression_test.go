@@ -182,6 +182,97 @@ func TestAdminCSRFContract(t *testing.T) {
 	}
 }
 
+func TestAdminCSRFExternalHTTPS(t *testing.T) {
+	previous := appConfig
+	appConfig.PublicURL = "https://example.com"
+	t.Cleanup(func() { appConfig = previous })
+	transports := []string{"https://example.com"}
+	if !constants.DEBUG_MODE {
+		transports = append(transports, "http://127.0.0.1:6235")
+	}
+	for _, transport := range transports {
+		t.Run(transport, func(t *testing.T) {
+			handler := adminCSRF(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			initial := httptest.NewRecorder()
+			handler.ServeHTTP(initial, httptest.NewRequest("GET", transport+"/form", nil))
+			cookies := initial.Result().Cookies()
+			if len(cookies) == 0 || !cookies[0].Secure || !cookies[0].HttpOnly {
+				t.Fatal("HTTPS CSRF cookie must remain secure and HTTP-only")
+			}
+			for _, test := range []struct {
+				name, origin, referer string
+				token, cookie         bool
+				status                int
+			}{
+				{"browser form", "https://example.com", "https://example.com/form", true, true, 204},
+				{"equivalent origin", "https://EXAMPLE.COM:443", "", true, true, 204},
+				{"referer only", "", "https://EXAMPLE.COM:443/form", true, true, 204},
+				{"automation without origin headers", "", "", true, true, 204},
+				{"missing token", "https://example.com", "", false, true, 403},
+				{"missing cookie", "https://example.com", "", true, false, 403},
+				{"missing token and headers", "", "", false, true, 403},
+				{"foreign origin", "https://attacker.test", "", true, true, 403},
+				{"downgraded origin", "http://example.com", "", true, true, 403},
+				{"foreign referer", "https://example.com", "https://attacker.test/form", true, true, 403},
+				{"downgraded referer", "", "http://example.com/form", true, true, 403},
+				{"opaque origin", "null", "", true, true, 403},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					request := httptest.NewRequest("POST", transport+"/form", nil)
+					request.Header.Set("Origin", test.origin)
+					request.Header.Set("Referer", test.referer)
+					if test.cookie {
+						for _, cookie := range cookies {
+							request.AddCookie(cookie)
+						}
+					}
+					if test.token {
+						request.Header.Set("X-CSRF-Token", initial.Header().Get("X-CSRF-Token"))
+					}
+					response := httptest.NewRecorder()
+					handler.ServeHTTP(response, request)
+					requireStatus(t, response, test.status)
+				})
+			}
+		})
+	}
+}
+
+func TestHTTPSAdminSignIn(t *testing.T) {
+	user, _ := passwordFixture(t)
+	previous := appConfig
+	appConfig.PublicURL = "https://example.com"
+	t.Cleanup(func() { appConfig = previous })
+	transport := "https://example.com"
+	if !constants.DEBUG_MODE {
+		transport = "http://127.0.0.1:6235"
+	}
+	router := initRouter()
+	initial := httptest.NewRecorder()
+	router.ServeHTTP(initial, httptest.NewRequest("GET", transport+"/admin/signin", nil))
+	requireStatus(t, initial, 200)
+	form := url.Values{
+		"username":           {user.Username},
+		"password":           {"original-password"},
+		"gorilla.csrf.Token": {initial.Header().Get("X-CSRF-Token")},
+	}
+	request := httptest.NewRequest("POST", transport+"/admin/signin", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", "https://example.com")
+	request.Header.Set("Referer", "https://example.com/admin/signin")
+	for _, cookie := range initial.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	requireStatus(t, response, http.StatusSeeOther)
+	if sessionFrom(response) == "" {
+		t.Fatal("HTTPS sign-in did not issue an authenticated session")
+	}
+}
+
 func TestSubmissionRequiredFieldsAndLimits(t *testing.T) {
 	for _, test := range []struct {
 		name, text, website string

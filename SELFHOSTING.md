@@ -363,6 +363,10 @@ For a production upgrade, preserve the previous binary/configuration and a
 consistent database backup. Apply the loopback binding, explicit proxy trust,
 and guestbook-only Caddy configuration together. Check health, fresh sign-in,
 submission, moderation, and visitor-IP behavior using controlled requests.
+Complete an actual sign-in POST through the public HTTPS URL; loading the
+form alone does not verify CSRF handling across TLS termination. Keep
+`server.public_url` set to that HTTPS origin even when Caddy's upstream hop
+uses HTTP.
 Use an operator-owned recipient only with explicit approval for a mail check.
 Older binaries reintroduce the old security/visibility behavior: rollback
 must consider data/schema compatibility and may require restoring the backup.

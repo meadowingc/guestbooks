@@ -63,11 +63,14 @@ func adminCSRF(next http.Handler) http.Handler {
 		copy := r.Clone(r.Context())
 		copy.URL.Scheme, copy.URL.Host = origin.Scheme, origin.Host
 		copy.Host = origin.Host
-		if mutation && copy.Header.Get("Origin") != "" {
-			// Normalize only after validating equivalent ports and host casing.
+		if mutation {
+			// Supplied headers were validated above. Preserve token-only automation
+			// while giving the library the canonical external origin.
 			copy.Header.Set("Origin", origin.Scheme+"://"+origin.Host)
 		}
-		copy = csrf.PlaintextHTTPRequest(copy)
+		if origin.Scheme == "http" {
+			copy = csrf.PlaintextHTTPRequest(copy)
+		}
 		protected.ServeHTTP(w, copy)
 	})
 }
