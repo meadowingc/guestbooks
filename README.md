@@ -71,6 +71,10 @@ addresses are not included in notification emails or public APIs.
 See [SELFHOSTING.md](./SELFHOSTING.md) for a full guide (binary install,
 Docker, reverse proxy snippets, backup/upgrade, etc.).
 
+Existing managed systemd VPS installations can use
+[`scripts/deploy_vps.py`](./SELFHOSTING.md#managed-systemd-vps) for backed-up,
+versioned updates with public HTTPS form checks and guarded rollback.
+
 Quick start:
 
 ```bash
@@ -107,7 +111,7 @@ go test -tags browser -count=1 -timeout 5m ./... -args -rod=bin="$CHROME"
 go test -tags browser,release -count=1 -timeout 5m ./... -args -rod=bin="$CHROME"
 ```
 
-The maintenance-script tests need Python 3 and the same bcrypt dependency as
+The script tests need Python 3.8+ and the same bcrypt dependency as
 the offline password-reset helper:
 
 ```bash

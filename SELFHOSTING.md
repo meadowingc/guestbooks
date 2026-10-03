@@ -334,6 +334,82 @@ docker run --rm -v guestbooks-data:/data -v "$(pwd):/backup" alpine:3.20 \
 
 ## Upgrading
 
+### Managed systemd VPS
+
+For an existing installation using the release layout below, deploy from your
+Linux workstation with:
+
+```bash
+python3 scripts/deploy_vps.py meadow-ubuntu-8gb-hel1-1 \
+  --public-url https://guestbooks.meadow.cafe
+```
+
+Replace the SSH alias and URL for another installation. The SSH destination
+must log in as root, using your normal SSH configuration/default key. The
+script asks you to type `yes`; `--yes` supplies confirmation for automation.
+Commit and push your changes first. The updater refuses a dirty worktree and
+builds an isolated archive of the local `HEAD`, not whatever happens to be in
+the VPS checkout. It does not commit, push, pull, or install dependencies.
+
+Prerequisites: Python 3.8+, Git, Go (the version required by `go.mod` or newer),
+a native CGO/C compiler, SSH/SCP, and the Python dependencies in
+`scripts/requirements.txt`. Both machines must use Linux and the same supported
+CPU architecture (x86_64 or aarch64), with compatible native libraries. The VPS
+needs Python 3.8+, systemd and `runuser`; it does not need Go or bcrypt.
+The updater executes the new binary's non-mutating `healthcheck` command on the
+VPS before stopping the running service, catching incompatible native builds.
+
+The updater targets this **already provisioned** layout; it is not an initial
+installer and does not apply to the basic single-directory or Docker setups:
+
+| Item | Location |
+| --- | --- |
+| Service | `guestbooks.service`, enabled and running as `guestbooks` |
+| Service executable | `/opt/guestbooks/current/guestbooks` |
+| Versioned releases | `/opt/guestbooks/releases/<commit>-<binary-hash>/` |
+| Working directory / live database | `/var/lib/guestbooks/guestbook.db` |
+| Configuration | `/etc/guestbooks/config.yaml` |
+| Private backups and logs | `/root/guestbooks-deploy-backups/update-*/` |
+
+The working directory's `config.yaml` must link to the configuration above;
+`assets` and `templates` must link through `/opt/guestbooks/current/`. The local
+app must listen at `127.0.0.1:6235`, and the public origin must use HTTPS.
+The existing service unit is `/etc/systemd/system/guestbooks.service` and the
+existing Caddy configuration is `/etc/caddy/Caddyfile`. Neither is rewritten.
+
+Each update runs non-browser Go tests in both build modes and the Python
+script tests, builds with `-tags release`, and uploads matching assets/templates,
+checksums and a source archive. Run the full browser release checks separately
+as described in the README; the updater does not run Chromium.
+It checks the existing public route, stops the service for a consistent SQLite
+backup, atomically switches the release link, and restarts. Health and actual
+HTTPS sign-in form POSTs are checked again, including CSRF rejection. Probes
+use random invalid credentials: no production account/message is created and
+no mail is sent. This is not a substitute for an authenticated browser check.
+Reload open admin forms after the restart.
+
+Deployment is serialized with a lock and runs in a transient systemd unit.
+If SSH disconnects, it continues on the VPS. The command prints the deployment
+journal command and receipt path; inspect those before retrying. Deploying an
+identical, already-active release checks health without restarting it.
+
+**Recovery:** if activation fails and the database is logically unchanged,
+the previous binary/assets/templates are restarted. If any data or schema
+changed, the service is deliberately left **stopped** with a `needs_recovery`
+receipt. Inspect the deployment journal and private `install.log`, preserve
+the current database, and assess compatibility before restarting either
+release. **The updater never restores an old database over current data.**
+It also never runs orphan repair, purges records, changes Caddy/SMTP settings,
+or deletes old releases/backups. Backups contain private data and credentials;
+retain them securely and manage disk space deliberately.
+
+The checkout and historical runtime files under `/root/guestbooks` are not
+updated or used by this command. The exact committed source is retained as
+`source.tar` alongside each deployment's backup. Obtain matching maintenance
+scripts from that revision rather than assuming an old checkout is current.
+
+### Basic single-directory installation
+
 ```bash
 git pull
 go build -tags release -o guestbooks .
