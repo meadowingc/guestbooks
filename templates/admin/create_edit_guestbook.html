@@ -31,7 +31,7 @@
                     Your site's URL where the guestbook will be displayed.
                 </div>
             </div>
-            
+
             <div class="form-group">
                 <label style="display: flex; align-items: center; cursor: pointer;">
                     <input type="checkbox" id="requiresApproval" name="requiresApproval" 
@@ -43,6 +43,77 @@
                 </div>
             </div>
         </div>
+
+        <section class="form-section" id="date-display-settings" aria-labelledby="date-display-heading">
+            <h4 id="date-display-heading">Date display</h4>
+            <p class="date-format-description">
+                Choose how message and reply dates appear on hosted pages and embeds. Dates always use the visitor's local timezone.
+            </p>
+            <div class="date-format-layout">
+                <div class="date-format-fields">
+                    <div class="form-group">
+                        <label for="dateFormat">Format</label>
+                        <select id="dateFormat" name="dateFormat" aria-describedby="date-format-help">
+                            <option value="" {{if not (and $isEditing .Data.DateFormat)}}selected{{end}}>Browser default</option>
+                            <option value="custom" {{if and $isEditing (eq .Data.DateFormat "custom")}}selected{{end}}>Custom format (advanced)</option>
+                        </select>
+                        <div id="date-format-help" class="form-hint">
+                            Browser default follows each visitor's locale. Custom format uses your chosen pattern.
+                        </div>
+                    </div>
+
+                    <div id="custom-date-format-settings" {{if not (and $isEditing (eq .Data.DateFormat "custom"))}}hidden{{end}}>
+                        <div class="form-group">
+                            <label for="dateFormatPattern">Format pattern</label>
+                            <input type="text" id="dateFormatPattern" name="dateFormatPattern" spellcheck="false" autocomplete="off"
+                                aria-describedby="date-pattern-help date-format-status"
+                                value="{{if and $isEditing .Data.DateFormatPattern}}{{.Data.DateFormatPattern}}{{else}}%Y-%m-%d{{end}}">
+                            <div id="date-pattern-help" class="form-hint">
+                                strftime-style tokens, up to 128 characters. For example, <code>%d/%m/%Y</code>.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="date-format-preview-panel">
+                    <span id="date-format-preview-label">Preview: today's date</span>
+                    <output id="date-format-preview" for="dateFormat dateFormatPattern" aria-labelledby="date-format-preview-label"></output>
+                    <p id="date-format-status" class="date-format-status" role="status" aria-live="polite" hidden></p>
+                </div>
+            </div>
+            <details class="settings-details" id="date-format-reference" {{if not (and $isEditing (eq .Data.DateFormat "custom"))}}hidden{{end}}>
+                <summary>Format reference and examples</summary>
+                <p class="form-hint">
+                    Guestbooks supports the date-only subset of
+                    <a href="https://pubs.opengroup.org/onlinepubs/9799919799/functions/strftime.html" target="_blank" rel="noopener noreferrer">strftime</a>
+                    listed below, not Go date layouts or JavaScript library patterns.
+                    Other text, including quotes and backslashes, is literal. Write <code>%%</code> for a percent sign.
+                </p>
+                <table>
+                    <thead><tr><th>Token</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>%Y</code>, <code>%y</code></td><td>Year: four digits or last two digits</td></tr>
+                        <tr><td><code>%m</code></td><td>Month, 01-12</td></tr>
+                        <tr><td><code>%d</code>, <code>%e</code></td><td>Day of month, padded to two characters with a zero or a space</td></tr>
+                        <tr><td><code>%b</code>, <code>%B</code></td><td>Short or full month name in the visitor's locale</td></tr>
+                        <tr><td><code>%a</code>, <code>%A</code></td><td>Short or full weekday name in the visitor's locale</td></tr>
+                        <tr><td><code>%j</code></td><td>Day of year, 001-366</td></tr>
+                        <tr><td><code>%G</code>, <code>%g</code></td><td>ISO week-numbering year: four digits or last two digits (can differ from %Y near New Year)</td></tr>
+                        <tr><td><code>%V</code></td><td>ISO week number, 01-53</td></tr>
+                        <tr><td><code>%u</code>, <code>%w</code></td><td>Weekday number: Monday=1 through Sunday=7, or Sunday=0 through Saturday=6</td></tr>
+                        <tr><td><code>%%</code></td><td>A literal percent sign</td></tr>
+                    </tbody>
+                </table>
+                <p class="form-hint">
+                    Examples: <code>%d/%m/%Y</code>, <code>%b %d, %Y</code>,
+                    compact ISO <code>%Y%m%d</code>, ISO week date <code>%G-W%V-%u</code>,
+                    ISO ordinal date <code>%Y-%j</code>.
+                    Dates use the Gregorian calendar. Names are localized using
+                    <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/DateTimeFormat" target="_blank" rel="noopener noreferrer">Intl.DateTimeFormat (MDN)</a>.
+                    Only the tokens listed here are supported; flags and time-of-day tokens are not.
+                </p>
+            </details>
+            <noscript><p class="form-hint">Enable JavaScript for live validation and preview. Formats are also validated when you save.</p></noscript>
+        </section>
 
         <div class="form-section">
             <h4>After Submission</h4>
@@ -210,8 +281,43 @@
     </form>
 </div>
 
+<script src="/assets/js/date-format.js" defer></script>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
+        const dateFormat = document.getElementById("dateFormat");
+        const datePattern = document.getElementById("dateFormatPattern");
+        const dateStatus = document.getElementById("date-format-status");
+        const datePreview = document.getElementById("date-format-preview");
+        function updateDateFormat() {
+            const custom = dateFormat.value === "custom";
+            document.getElementById("custom-date-format-settings").hidden = !custom;
+            document.getElementById("date-format-reference").hidden = !custom;
+            datePattern.disabled = !custom;
+            datePattern.required = custom;
+            let errorMessage = "";
+            try {
+                const formatter = guestbooksDateFormat.createFormatter(dateFormat.value, datePattern.value);
+                datePreview.textContent = formatter(new Date());
+            } catch (error) {
+                if (typeof guestbooksDateFormat !== "undefined" && error instanceof guestbooksDateFormat.PatternError) {
+                    errorMessage = error.message;
+                } else {
+                    errorMessage = "Date preview could not be loaded. Reload the page and try again.";
+                    console.error("Guestbook date preview failed:", error);
+                }
+                datePreview.textContent = "Unavailable";
+            }
+            datePattern.setCustomValidity(custom ? errorMessage : "");
+            datePattern.setAttribute("aria-invalid", String(custom && !!errorMessage));
+            dateStatus.hidden = !custom && !errorMessage;
+            dateStatus.dataset.state = errorMessage ? "error" : "valid";
+            dateStatus.textContent = errorMessage || "Valid format.";
+        }
+        dateFormat.addEventListener("change", updateDateFormat);
+        datePattern.addEventListener("input", updateDateFormat);
+        window.addEventListener("focus", updateDateFormat);
+        updateDateFormat();
+
         const moderation = document.getElementById("requiresApproval");
         moderation.addEventListener("change", function () {
             document.getElementById("moderation-notification-status").hidden = !moderation.checked;

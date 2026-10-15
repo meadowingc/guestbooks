@@ -794,27 +794,32 @@ func TestGuestbookSettingsBrowserOptIn(t *testing.T) {
 	page.MustNavigate(settingsURL).MustWaitLoad()
 	page.MustElement("#accept-cookies").MustClick()
 	if page.MustElement("#submissionAction").MustProperty("value").Str() != "" ||
+		page.MustElement("#dateFormat").MustProperty("value").Str() != "" ||
 		page.MustElement("#collectEmail").MustProperty("checked").Bool() {
 		t.Fatal("features were enabled by default")
 	}
 	page.MustElement("#submissionAction").MustSelect("Show a confirmation message")
+	page.MustElement("#dateFormat").MustSelect("Custom format (advanced)")
 	page.MustElement("#submissionMessage").MustInput("ありがとう！")
 	page.MustElement("#collectEmail").MustClick()
 	page.MustElement("#emailFieldLabel").MustSelectAllText().MustInput("返信先 (任意)")
 	submitBrowserForm(page, "#guestbook-edit-form")
 	page.MustNavigate(settingsURL).MustWaitLoad()
 	if page.MustElement("#submissionMessage").MustProperty("value").Str() != "ありがとう！" ||
+		page.MustElement("#dateFormat").MustProperty("value").Str() != "custom" ||
 		!page.MustElement("#collectEmail").MustProperty("checked").Bool() {
 		t.Fatal("enabled options were not saved")
 	}
 	page.MustElement("#submissionAction").MustSelect("Keep current behavior (no confirmation)")
+	page.MustElement("#dateFormat").MustSelect("Browser default")
 	page.MustElement("#collectEmail").MustClick()
 	submitBrowserForm(page, "#guestbook-edit-form")
 	page.MustNavigate(settingsURL).MustWaitLoad()
 	if err := db.First(&book, book.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || book.SubmissionMessage != "ありがとう！" || book.EmailFieldLabel != "返信先 (任意)" {
+	if book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || book.DateFormat != DateFormatBrowser ||
+		book.SubmissionMessage != "ありがとう！" || book.EmailFieldLabel != "返信先 (任意)" {
 		t.Fatal("disabling options failed or erased customized text")
 	}
 	page.MustNavigate(base + fmt.Sprintf("/guestbook/%d", book.ID))
@@ -827,5 +832,91 @@ func TestGuestbookSettingsBrowserOptIn(t *testing.T) {
 	page.MustWait(`() => document.querySelector("input[name=name]").value === ""`)
 	if page.MustHas("#guestbooks___success-message") {
 		t.Fatal("disabled confirmation still appeared")
+	}
+}
+
+func TestGuestbookDateFormatBrowser(t *testing.T) {
+	user, book := featureFixture(t)
+	message := Message{Name: "Visitor", Text: "Dated message", GuestbookID: book.ID, Approved: true}
+	message.CreatedAt = time.Date(2026, time.January, 1, 0, 30, 0, 0, time.UTC)
+	if err := db.Create(&message).Error; err != nil {
+		t.Fatal(err)
+	}
+	reply := Message{Name: "Owner", Text: "Dated reply", GuestbookID: book.ID, Approved: true, ParentMessageID: &message.ID}
+	reply.CreatedAt = time.Date(2026, time.January, 1, 23, 30, 0, 0, time.UTC)
+	if err := db.Create(&reply).Error; err != nil {
+		t.Fatal(err)
+	}
+	page, base := frontendAdminPage(t, user, fmt.Sprintf("/admin/guestbook/%d/embed", book.ID))
+	snippet := page.MustElement("#js-code").MustText()
+	publicURL := base + fmt.Sprintf("/guestbook/%d", book.ID)
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if r.URL.Path == "/iframe" {
+			fmt.Fprintf(w, `<!doctype html><iframe src=%q></iframe>`, publicURL)
+		} else {
+			fmt.Fprint(w, "<!doctype html><body>"+snippet+"</body>")
+		}
+	}))
+	defer site.Close()
+
+	for _, visitor := range []struct {
+		locale, timezone string
+		browserDates     [2]string
+		calendarDates    [2]string
+		customDates      [2]string
+	}{
+		{"en_US", "America/Los_Angeles", [2]string{"12/31/2025", "1/1/2026"}, [2]string{"2025-12-31", "2026-01-01"},
+			[2]string{"2026-W01-3 (2025-365)", "2026-W01-4 (2026-001)"}},
+		{"de_DE", "Asia/Tokyo", [2]string{"1.1.2026", "2.1.2026"}, [2]string{"2026-01-01", "2026-01-02"},
+			[2]string{"2026-W01-4 (2026-001)", "2026-W01-5 (2026-002)"}},
+	} {
+		if err := (proto.EmulationSetLocaleOverride{Locale: visitor.locale}).Call(page); err != nil {
+			t.Fatal(err)
+		}
+		if err := (proto.EmulationSetTimezoneOverride{TimezoneID: visitor.timezone}).Call(page); err != nil {
+			t.Fatal(err)
+		}
+		for _, format := range []struct {
+			name    string
+			mode    DateFormat
+			pattern string
+			dates   [2]string
+		}{
+			{"browser", DateFormatBrowser, "", visitor.browserDates},
+			{"calendar", DateFormatCustom, defaultDateFormatPattern, visitor.calendarDates},
+			{"week", DateFormatCustom, "%G-W%V-%u (%Y-%j)", visitor.customDates},
+		} {
+			if err := db.Model(&book).Updates(map[string]any{
+				"date_format": format.mode, "date_format_pattern": format.pattern,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			for _, surface := range []struct {
+				name, url string
+			}{
+				{"hosted", publicURL},
+				{"iframe", site.URL + "/iframe"},
+				{"javascript", site.URL + "/javascript"},
+			} {
+				t.Run(fmt.Sprintf("%s/%s/%s/%s", visitor.locale, visitor.timezone, format.name, surface.name), func(t *testing.T) {
+					page.MustNavigate(surface.url).MustWaitLoad()
+					messagePage := page
+					if surface.name == "iframe" {
+						messagePage = page.MustElement("iframe").MustFrame()
+					}
+					waitForGuestbook(messagePage)
+					for i, selector := range []string{
+						".guestbook-message:not(.guestbook-message-reply) small",
+						".guestbook-message-reply small",
+					} {
+						got := messagePage.MustElement(selector).MustProperty("textContent").Str()
+						if got != " - "+format.dates[i] {
+							t.Errorf("date = %q, want %q", got, " - "+format.dates[i])
+						}
+					}
+				})
+			}
+		}
 	}
 }

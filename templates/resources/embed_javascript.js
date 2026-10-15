@@ -5,6 +5,7 @@
   var guestbookID = "{{.Guestbook.ID}}";
   var powEnabled = {{if .Guestbook.PowEnabled}}true{{else}}false{{end}};
   var key = JSON.stringify([host, guestbookID, config, powEnabled]);
+  {{template "date-format.js" .}}
 
   function initialize() {
     var form = document.getElementById("guestbooks___guestbook-form");
@@ -139,6 +140,19 @@
         typeof message.CreatedAt === "string" && !Number.isNaN(Date.parse(message.CreatedAt)) &&
         (message.Website == null || typeof message.Website === "string");
     }
+    var formatMessageDate;
+    try {
+      formatMessageDate = guestbooksDateFormat.createFormatter(config.dateFormat, config.dateFormatPattern);
+    } catch (error) {
+      if (!(error instanceof guestbooksDateFormat.PatternError)) throw error;
+      console.error("Invalid guestbook date format:", error);
+      var dateWarning = track(document.createElement("p"));
+      dateWarning.id = "guestbooks___date-format-warning";
+      dateWarning.setAttribute("role", "alert");
+      dateWarning.textContent = "This guestbook's date format needs repair. Dates are shown in your browser's format instead.";
+      messagesContainer.insertAdjacentElement("beforebegin", dateWarning);
+      formatMessageDate = guestbooksDateFormat.createFormatter("");
+    }
     function messageElement(message, reply) {
       var element = document.createElement("div");
       element.className = "guestbook-message" + (reply ? " guestbook-message-reply" : "");
@@ -164,7 +178,11 @@
         name.textContent = message.Name;
       }
       var date = document.createElement("small");
-      date.textContent = " - " + new Date(message.CreatedAt).toLocaleDateString();
+      date.textContent = " - " + formatMessageDate(new Date(message.CreatedAt));
+      if (config.dateFormat === "custom") {
+        date.style.whiteSpace = "pre-wrap";
+        date.style.overflowWrap = "anywhere";
+      }
       var text = document.createElement("blockquote");
       text.textContent = message.Text;
       header.append(name, date);

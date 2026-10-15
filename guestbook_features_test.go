@@ -106,7 +106,8 @@ func TestGuestbookSettingsMigration(t *testing.T) {
 	if err := migrationDB.First(&message, 1).Error; err != nil {
 		t.Fatal(err)
 	}
-	if book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || !book.RequiresApproval {
+	if book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || book.DateFormat != DateFormatBrowser ||
+		book.DateFormatPattern != "" || !book.RequiresApproval {
 		t.Fatalf("migration changed legacy behavior: %+v", book)
 	}
 	if message.Email != nil || message.Text != "Keep this message" {
@@ -116,7 +117,8 @@ func TestGuestbookSettingsMigration(t *testing.T) {
 	if err := migrationDB.Create(&fresh).Error; err != nil {
 		t.Fatal(err)
 	}
-	if fresh.CollectEmail || fresh.SubmissionAction != SubmissionUnchanged {
+	if fresh.CollectEmail || fresh.SubmissionAction != SubmissionUnchanged || fresh.DateFormat != DateFormatBrowser ||
+		fresh.DateFormatPattern != "" {
 		t.Fatal("new guestbooks must also opt out")
 	}
 }
@@ -139,6 +141,10 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 		{"missing confirmation", "submissionMessage", " ", false},
 		{"invalid utf8", "submissionMessage", string([]byte{0xff}), false},
 		{"unknown action", "submissionAction", "something-else", false},
+		{"browser date format", "dateFormat", "", true},
+		{"removed ISO mode", "dateFormat", "iso", false},
+		{"unknown date format", "dateFormat", "en-SE", false},
+		{"custom date format", "dateFormat", "YYYY/MM/DD", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			form := url.Values{}
@@ -170,6 +176,7 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 	form := url.Values{
 		"websiteURL": {book.WebsiteURL}, "submissionAction": {"message"}, "submissionMessage": {"Merci !"},
 		"collectEmail": {"on"}, "emailFieldLabel": {"Courriel (facultatif)"}, "emailFieldHelp": {"Visible uniquement par le propriétaire."},
+		"dateFormat": {"custom"}, "dateFormatPattern": {defaultDateFormatPattern},
 	}
 	requireStatus(t, featureRequest(router, "POST", fmt.Sprintf("/admin/guestbook/%d/edit", book.ID), form, &user, false), 303)
 	requireStatus(t, featureRequest(router, "POST", fmt.Sprintf("/admin/guestbook/%d/edit", book.ID),
@@ -177,7 +184,7 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 	if err := db.First(&book, book.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if book.SubmissionMessage != "Merci !" || !book.CollectEmail {
+	if book.SubmissionMessage != "Merci !" || !book.CollectEmail || book.DateFormat != DateFormatCustom {
 		t.Fatal("an older form reset new settings")
 	}
 	form.Set("submissionMessage", "")
@@ -188,8 +195,56 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 	if err := db.Where("admin_user_id = ?", user.ID).Last(&created).Error; err != nil {
 		t.Fatal(err)
 	}
-	if created.SubmissionMessage != "Danke!" || !created.CollectEmail {
+	if created.SubmissionMessage != "Danke!" || !created.CollectEmail || created.DateFormat != DateFormatCustom {
 		t.Fatal("create handler did not save the settings")
+	}
+}
+
+func TestGuestbookDateFormatSettings(t *testing.T) {
+	user, book := featureFixture(t)
+	router := initRouter()
+	editPath := fmt.Sprintf("/admin/guestbook/%d/edit", book.ID)
+	scriptPath := fmt.Sprintf("/resources/js/embed_script/%d/script.js", book.ID)
+	for _, format := range []DateFormat{DateFormatBrowser, DateFormatCustom, DateFormatBrowser} {
+		form := url.Values{
+			"websiteURL": {book.WebsiteURL}, "dateFormat": {string(format)}, "dateFormatPattern": {defaultDateFormatPattern},
+		}
+		requireStatus(t, featureRequest(router, "POST", editPath, form, &user, false), 303)
+		if err := db.First(&book, book.ID).Error; err != nil {
+			t.Fatal(err)
+		}
+		if book.DateFormat != format {
+			t.Fatalf("saved format = %q, want %q", book.DateFormat, format)
+		}
+		response := featureRequest(router, "GET", editPath, nil, &user, false)
+		requireStatus(t, response, 200)
+		if !strings.Contains(response.Body.String(), fmt.Sprintf(`<option value="%s" selected>`, format)) {
+			t.Fatalf("saved date format %q is not selected", format)
+		}
+		response = featureRequest(router, "GET", scriptPath, nil, nil, false)
+		requireStatus(t, response, 200)
+		if !strings.Contains(response.Body.String(), fmt.Sprintf(`"dateFormat":%q`, format)) {
+			t.Fatalf("embed configuration does not use saved date format %q", format)
+		}
+	}
+	for _, path := range []string{"/admin/guestbook/new", editPath} {
+		form := url.Values{"websiteURL": {"https://invalid-format.test"}, "dateFormat": {"iso"}}
+		response := featureRequest(router, "POST", path, form, &user, false)
+		requireStatus(t, response, 400)
+		if !strings.Contains(response.Body.String(), "unknown date display format") {
+			t.Fatal("invalid date format was not explained")
+		}
+	}
+	var count int64
+	if err := db.Model(&Guestbook{}).Where("admin_user_id = ?", user.ID).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	var saved Guestbook
+	if err := db.First(&saved, book.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || saved.WebsiteURL != book.WebsiteURL || saved.DateFormat != DateFormatBrowser {
+		t.Fatal("invalid date format created or modified a guestbook")
 	}
 }
 
@@ -366,7 +421,7 @@ func TestPrivateEmailPrivacyAndLifecycle(t *testing.T) {
 				t.Fatalf("expected %s response", cacheState)
 			}
 			body := response.Body.String()
-			for _, forbidden := range []string{privateAddress, `"Email"`, `"CollectEmail"`, `"SubmissionAction"`, `"EmailFieldLabel"`} {
+			for _, forbidden := range []string{privateAddress, `"Email"`, `"CollectEmail"`, `"SubmissionAction"`, `"EmailFieldLabel"`, `"DateFormat"`, `"DateFormatPattern"`} {
 				if strings.Contains(body, forbidden) {
 					t.Fatalf("%s exposed %q", version, forbidden)
 				}

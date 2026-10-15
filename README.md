@@ -9,6 +9,13 @@ The canonical hosted instance lives at <https://guestbooks.meadow.cafe>.
 
 In your guestbook's **Edit settings** page:
 
+- **Date display** defaults to each visitor's browser locale. Choose
+  **Custom format (advanced)** to define your own pattern, initially
+  `%Y-%m-%d` (ISO year-month-day). Custom patterns have live validation, a preview
+  of today's date, and a format reference in the settings page. Both options
+  keep the visitor's local timezone and apply to messages and replies on hosted
+  pages, iframe embeds, and service-hosted JavaScript embeds on their next load.
+  Browser-default guestbooks stay unchanged.
 - **After Submission** can show your own plain-text confirmation (in any
   language, up to 2,000 characters), or redirect visitors to an HTTP(S)
   thank-you page. Both are opt-in, including for new guestbooks. If you
@@ -24,6 +31,27 @@ HTML; it is never injected into your existing layout. Disabling collection
 discards newly submitted email values but retains previously collected ones.
 Remove the field from copied HTML when you turn collection off.
 
+### Custom date formats
+
+Custom patterns use a small, date-only subset of strftime-style tokens, not
+JavaScript or date-parsing strings. Examples include `%d/%m/%Y`, `%b %d, %Y`,
+compact ISO `%Y%m%d`, ISO week dates `%G-W%V-%u`, and ordinal dates `%Y-%j`.
+
+Supported tokens are `%Y`/`%y` (year), `%m` (month number), `%d`/`%e`
+(zero-/space-padded day), `%b`/`%B` (short/full month name), `%a`/`%A`
+(short/full weekday name), `%j` (day of year), `%G`/`%g` (ISO week year),
+`%V` (ISO week), `%u` (weekday, Monday=1), `%w` (weekday, Sunday=0), and
+`%%` (a literal percent sign). The ISO week year can differ from the calendar
+year around New Year. Dates use the Gregorian calendar; names follow the
+visitor's locale.
+
+Other characters, including quotes and backslashes, are literal. Patterns
+must contain a date token, fit within 128 Unicode characters, and contain no
+control characters. Unknown tokens, flags, and time-of-day tokens are rejected.
+Both the browser and server validate saved formats. Switching back to Browser default
+preserves the saved custom pattern. Patterns are plain text, never evaluated as
+code or inserted as HTML.
+
 ### Updating an existing JavaScript embed
 
 The standard embed loads its script from Guestbooks; the form HTML belongs
@@ -32,6 +60,7 @@ these settings:
 
 | Change in the dashboard | Update copied HTML? |
 | --- | --- |
+| Change the date display format | No. The next page load uses the saved setting. |
 | Enable, edit, or disable a confirmation message | No. The next submission uses the saved setting; a notice is inserted only when there is text to show. |
 | Enable, change, or disable a redirect | No. The next submission uses the saved setting, unless a nonempty `redirect_to_url` input overrides it. |
 | Enable private email | Yes. Add the optional email field from the updated snippet; existing forms without it still work. |

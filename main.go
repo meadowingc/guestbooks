@@ -62,9 +62,7 @@ func initDatabase() error {
 		return fmt.Errorf("connect database: %w", err)
 	}
 
-	// Migrate the schema
-	err = db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{})
-	if err != nil {
+	if err := db.AutoMigrate(&Guestbook{}, &Message{}, &AdminUser{}); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	return nil
@@ -196,7 +194,7 @@ func initRouter() *chi.Mux {
 		r.Route("/js", func(r chi.Router) {
 			r.With(validRouteIDs).Get("/embed_script/{guestbookID}/script.js", func(w http.ResponseWriter, r *http.Request) {
 				guestbookID := chi.URLParam(r, "guestbookID")
-				template, err := textTemplate.ParseFiles("templates/resources/embed_javascript.js")
+				template, err := textTemplate.ParseFiles("templates/resources/embed_javascript.js", "assets/js/date-format.js")
 				if err != nil {
 					log.Printf("Error parsing embed script: %v", err)
 					http.Error(w, "Embed script unavailable", http.StatusInternalServerError)
@@ -224,17 +222,19 @@ func initRouter() *chi.Mux {
 					HostUrl:   hostUrl,
 				}
 				configJSON, err := json.Marshal(struct {
-					CollectEmail           bool   `json:"collectEmail"`
-					MaxEmailBytes          int    `json:"maxEmailBytes"`
-					ChallengeFailedMessage string `json:"challengeFailedMessage"`
-					Question               string `json:"question"`
-					Hint                   string `json:"hint"`
-					MaxMessageCharacters   int    `json:"maxMessageCharacters"`
-					MaxNameCharacters      int    `json:"maxNameCharacters"`
-					MaxWebsiteBytes        int    `json:"maxWebsiteBytes"`
+					CollectEmail           bool       `json:"collectEmail"`
+					MaxEmailBytes          int        `json:"maxEmailBytes"`
+					ChallengeFailedMessage string     `json:"challengeFailedMessage"`
+					Question               string     `json:"question"`
+					Hint                   string     `json:"hint"`
+					MaxMessageCharacters   int        `json:"maxMessageCharacters"`
+					MaxNameCharacters      int        `json:"maxNameCharacters"`
+					MaxWebsiteBytes        int        `json:"maxWebsiteBytes"`
+					DateFormat             DateFormat `json:"dateFormat"`
+					DateFormatPattern      string     `json:"dateFormatPattern"`
 				}{guestbook.CollectEmail, maxEmailBytes, guestbook.ChallengeFailedMessage,
 					guestbook.ChallengeQuestion, guestbook.ChallengeHint,
-					constants.MAX_MESSAGE_LENGTH, maxNameCharacters, maxWebsiteBytes})
+					constants.MAX_MESSAGE_LENGTH, maxNameCharacters, maxWebsiteBytes, guestbook.DateFormat, guestbook.DateFormatPattern})
 				if err != nil {
 					http.Error(w, "Error rendering embed configuration", http.StatusInternalServerError)
 					return

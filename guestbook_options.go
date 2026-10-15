@@ -32,6 +32,21 @@ func readGuestbookOptions(r *http.Request, guestbook *Guestbook) error {
 		return errors.New("invalid guestbook settings form")
 	}
 	// Older forms must not reset settings they do not contain.
+	if r.PostForm.Has("dateFormat") {
+		guestbook.DateFormat = DateFormat(r.PostForm.Get("dateFormat"))
+	}
+	if r.PostForm.Has("dateFormatPattern") {
+		guestbook.DateFormatPattern = r.PostForm.Get("dateFormatPattern")
+	}
+	switch guestbook.DateFormat {
+	case DateFormatBrowser:
+	case DateFormatCustom:
+		if err := validateDateFormatPattern(guestbook.DateFormatPattern); err != nil {
+			return err
+		}
+	default:
+		return errors.New("unknown date display format")
+	}
 	if r.PostForm.Has("submissionAction") {
 		guestbook.SubmissionAction = SubmissionAction(r.PostForm.Get("submissionAction"))
 		if r.PostForm.Has("submissionMessage") {
@@ -59,6 +74,7 @@ func readGuestbookOptions(r *http.Request, guestbook *Guestbook) error {
 		{"Confirmation text", guestbook.SubmissionMessage, maxConfirmationLength},
 		{"Email field label", guestbook.EmailFieldLabel, maxEmailLabelLength},
 		{"Email field help", guestbook.EmailFieldHelp, maxEmailHelpLength},
+		{"Custom date format", guestbook.DateFormatPattern, maxDateFormatLength},
 	} {
 		if !utf8.ValidString(field.value) || utf8.RuneCountInString(field.value) > field.limit {
 			return fmt.Errorf("%s must contain at most %d characters", field.name, field.limit)

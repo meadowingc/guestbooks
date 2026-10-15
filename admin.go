@@ -567,6 +567,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 			"submission_action": guestbook.SubmissionAction, "submission_message": guestbook.SubmissionMessage,
 			"submission_redirect_url": guestbook.SubmissionRedirectURL, "collect_email": guestbook.CollectEmail,
 			"email_field_label": guestbook.EmailFieldLabel, "email_field_help": guestbook.EmailFieldHelp,
+			"date_format": guestbook.DateFormat, "date_format_pattern": guestbook.DateFormatPattern,
 		})
 	if result.Error != nil {
 		http.Error(w, "Error updating guestbook", http.StatusInternalServerError)

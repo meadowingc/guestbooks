@@ -11,10 +11,12 @@ import (
 // Guestbook represents a collection of messages for a specific website
 type Guestbook struct {
 	gorm.Model
-	WebsiteURL       string
-	AdminUserID      uint `gorm:"index"`
-	RequiresApproval bool `gorm:"default:false"`
-	PowEnabled       bool `gorm:"default:false"`
+	WebsiteURL        string
+	AdminUserID       uint       `gorm:"index"`
+	RequiresApproval  bool       `gorm:"default:false"`
+	PowEnabled        bool       `gorm:"default:false"`
+	DateFormat        DateFormat `gorm:"default:''" json:"-"`
+	DateFormatPattern string     `json:"-"`
 
 	SubmissionAction      SubmissionAction `gorm:"default:''" json:"-"`
 	SubmissionMessage     string           `json:"-"`
