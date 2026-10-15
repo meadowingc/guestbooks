@@ -1,7 +1,7 @@
 """Deployment safety tests use only temporary files and loopback HTTP."""
 
 import argparse
-from contextlib import closing, redirect_stdout
+from contextlib import closing, redirect_stderr, redirect_stdout
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import io
@@ -212,6 +212,96 @@ class DeploymentTests(unittest.TestCase):
             self.assertEqual(deploy.backup_database(self.installer.database, backup),
                              deploy.read_database_digest(self.installer.database))
             self.assertNotEqual(deploy.read_database_digest(backup), self.original)
+
+
+class DeploymentDefaultsTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory(prefix="guestbooks-deployment-defaults-test-")
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.env_file = self.root / ".env.deploy"
+        script = patch("deploy_vps.__file__", str(self.root / "scripts/deploy_vps.py"))
+        script.start()
+        self.addCleanup(script.stop)
+        environment = patch.dict(os.environ, {}, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    def test_explicit_arguments_work_without_defaults_file(self):
+        args = deploy.parse_args(["root@example.test", "--public-url", "https://example.test", "--yes"])
+        self.assertEqual(args.host, "root@example.test")
+        self.assertEqual(args.public_url, "https://example.test")
+        self.assertTrue(args.yes)
+
+    def test_repository_local_defaults_preserve_confirmation(self):
+        self.env_file.write_text(
+            '# Local deployment\n\nDEPLOY_HOST = "root@example.test" # SSH destination\n'
+            "DEPLOY_PUBLIC_URL='https://example.test'\n"
+        )
+        args = deploy.parse_args([])
+        self.assertEqual(args.host, "root@example.test")
+        self.assertEqual(args.public_url, "https://example.test")
+        self.assertFalse(args.yes)
+
+    def test_environment_and_cli_override_file_defaults(self):
+        self.env_file.write_text("DEPLOY_HOST=file.test\nDEPLOY_PUBLIC_URL=https://file.test\n")
+        with patch.dict(os.environ, {
+            "DEPLOY_HOST": "environment.test", "DEPLOY_PUBLIC_URL": "https://environment.test",
+        }):
+            args = deploy.parse_args([])
+            self.assertEqual(args.host, "environment.test")
+            self.assertEqual(args.public_url, "https://environment.test")
+            args = deploy.parse_args(["cli.test", "--public-url", "https://cli.test"])
+            self.assertEqual(args.host, "cli.test")
+            self.assertEqual(args.public_url, "https://cli.test")
+
+    def test_partial_defaults_can_be_completed_on_command_line(self):
+        self.env_file.write_text("DEPLOY_HOST=example.test\n")
+        args = deploy.parse_args(["--public-url", "https://example.test"])
+        self.assertEqual(args.host, "example.test")
+        self.assertEqual(args.public_url, "https://example.test")
+
+    def test_missing_values_fail_before_deployment(self):
+        for content in ("", "DEPLOY_HOST=example.test\n", "DEPLOY_PUBLIC_URL=https://example.test\n"):
+            with self.subTest(content=content), redirect_stderr(io.StringIO()), \
+                    patch("deploy_vps.sys.argv", ["deploy_vps.py"]), patch("deploy_vps.deploy") as run:
+                self.env_file.write_text(content)
+                with self.assertRaises(SystemExit) as raised:
+                    deploy.main()
+                self.assertEqual(raised.exception.code, 2)
+                run.assert_not_called()
+
+    def test_invalid_defaults_fail_without_echoing_values(self):
+        for content in (
+            "DEPLOY_HOST",
+            "UNKNOWN=private-value",
+            "DEPLOY_YES=true",
+            "DEPLOY_HOST=private-value\nDEPLOY_HOST=another",
+            "DEPLOY_HOST=",
+            "DEPLOY_HOST=''",
+            "DEPLOY_HOST=private-value extra",
+            'DEPLOY_HOST="private-value',
+            "export DEPLOY_HOST=private-value",
+        ):
+            with self.subTest(content=content):
+                self.env_file.write_text(content)
+                with self.assertRaises(deploy.DeploymentError) as raised:
+                    deploy.parse_args([])
+                self.assertIn(str(self.env_file) + ":", str(raised.exception))
+                self.assertNotIn("private-value", str(raised.exception))
+
+    def test_defaults_are_literal_not_shell_code(self):
+        self.env_file.write_text("DEPLOY_HOST='$(touch should-not-exist)'\nDEPLOY_PUBLIC_URL='${PUBLIC_URL}'\n")
+        with patch("deploy_vps.subprocess.run") as run:
+            defaults = deploy.deployment_defaults(self.env_file)
+        self.assertEqual(defaults["DEPLOY_HOST"], "$(touch should-not-exist)")
+        self.assertEqual(defaults["DEPLOY_PUBLIC_URL"], "${PUBLIC_URL}")
+        run.assert_not_called()
+
+    def test_unreadable_defaults_are_not_silently_ignored(self):
+        with patch.object(Path, "read_text", side_effect=PermissionError("permission denied")):
+            with self.assertRaises(PermissionError):
+                deploy.parse_args([])
 
 
 class InputAndProbeTests(unittest.TestCase):

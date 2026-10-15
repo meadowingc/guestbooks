@@ -425,6 +425,43 @@ def deploy(args):
                   f"Receipt: {stage}/deployment.json", flush=True)
 
 
+def deployment_defaults(path):
+    try:
+        content = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    defaults = {}
+    for number, line in enumerate(content.splitlines(), 1):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        require(separator and key in ("DEPLOY_HOST", "DEPLOY_PUBLIC_URL") and key not in defaults,
+                f"{path}:{number}: expected a unique DEPLOY_HOST or DEPLOY_PUBLIC_URL assignment")
+        try:
+            values = shlex.split(value, comments=True)
+        except ValueError:
+            raise DeploymentError(f"{path}:{number}: invalid quoted value") from None
+        require(len(values) == 1 and values[0], f"{path}:{number}: expected one non-empty value")
+        defaults[key] = values[0]
+    return defaults
+
+
+def parse_args(argv=None):
+    defaults = deployment_defaults(Path(__file__).resolve().parent.parent / ".env.deploy")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("host", nargs="?", default=os.environ.get("DEPLOY_HOST", defaults.get("DEPLOY_HOST")),
+                        help="Root SSH alias or root@hostname; defaults to DEPLOY_HOST in the environment or .env.deploy")
+    parser.add_argument("--public-url", default=os.environ.get("DEPLOY_PUBLIC_URL", defaults.get("DEPLOY_PUBLIC_URL")),
+                        help="Public HTTPS origin; defaults to DEPLOY_PUBLIC_URL in the environment or .env.deploy")
+    parser.add_argument("--yes", action="store_true", help="Confirm deployment without prompting")
+    args = parser.parse_args(argv)
+    if not args.host or not args.public_url:
+        parser.error("provide host and --public-url, or set DEPLOY_HOST and DEPLOY_PUBLIC_URL in the environment or .env.deploy")
+    return args
+
+
 def main():
     if sys.argv[1:2] == ["--install"]:
         require(len(sys.argv) == 3, "Invalid internal installer arguments")
@@ -436,11 +473,7 @@ def main():
         signal.signal(signal.SIGTERM, interrupted)
         Installer(stage).install()
         return
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("host", help="Root SSH alias or root@hostname; uses normal SSH keys/config")
-    parser.add_argument("--public-url", required=True, help="Public HTTPS origin, e.g. https://guestbooks.example.com")
-    parser.add_argument("--yes", action="store_true", help="Confirm deployment without prompting")
-    deploy(parser.parse_args())
+    deploy(parse_args())
 
 
 if __name__ == "__main__":
