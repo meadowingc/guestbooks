@@ -1,5 +1,6 @@
 """Synthetic-only regression tests for stopped-service maintenance commands."""
 
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -13,7 +14,7 @@ class DataMaintenanceTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix="guestbooks-maintenance-test-")
         self.addCleanup(self.directory.cleanup)
         self.database = Path(self.directory.name) / "synthetic.sqlite"
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.executescript(
                 """
                 CREATE TABLE admin_users (
@@ -60,14 +61,14 @@ class DataMaintenanceTests(unittest.TestCase):
         )
 
     def rows(self):
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             return {
                 table: connection.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
                 for table in ("admin_users", "guestbooks", "messages")
             }
 
     def test_purge_includes_soft_deleted_rows_and_preserves_other_owners(self):
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("UPDATE admin_users SET deleted_at = '2020-01-01' WHERE id = 1")
         before = self.rows()
         result = self.run_script("hard_delete_all_data_for_username.py", "target")
@@ -85,7 +86,7 @@ class DataMaintenanceTests(unittest.TestCase):
         result = self.run_script("hard_delete_all_data_for_username.py", "target", answer="no\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.rows(), before)
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 """CREATE TRIGGER reject_purge BEFORE DELETE ON guestbooks
                    WHEN OLD.id = 10 BEGIN SELECT RAISE(ABORT, 'injected failure'); END"""
@@ -97,7 +98,7 @@ class DataMaintenanceTests(unittest.TestCase):
         self.assertEqual(self.rows(), before)
 
     def test_purge_rejects_cross_owner_cascades(self):
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 "INSERT INTO messages VALUES (203, 20, 101, 'keep-cross-book@example.test', NULL)"
             )
@@ -120,7 +121,7 @@ class DataMaintenanceTests(unittest.TestCase):
                 self.assertFalse(missing.exists())
 
     def add_orphans(self):
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.executescript(
                 """
                 INSERT INTO guestbooks VALUES (30, 3, NULL), (40, 404, NULL);
@@ -172,7 +173,7 @@ class DataMaintenanceTests(unittest.TestCase):
     def test_repair_failure_rolls_back_books_and_messages(self):
         self.add_orphans()
         before = self.rows()
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 """CREATE TRIGGER reject_repair BEFORE UPDATE OF deleted_at ON messages
                    WHEN NEW.id = 603 BEGIN SELECT RAISE(ABORT, 'injected failure'); END"""
@@ -183,7 +184,7 @@ class DataMaintenanceTests(unittest.TestCase):
         self.assertEqual(self.rows(), before)
 
     def test_purge_reports_unattributable_rows_without_claiming_ownership(self):
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute(
                 "INSERT INTO messages VALUES (501, 999, NULL, 'unattributable@example.test', NULL)"
             )

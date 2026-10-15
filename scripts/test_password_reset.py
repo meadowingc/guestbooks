@@ -1,3 +1,4 @@
+from contextlib import closing
 import sqlite3
 import subprocess
 import sys
@@ -12,7 +13,7 @@ class PasswordResetTests(unittest.TestCase):
     def test_reset_revokes_session_and_recovery_without_touching_other_accounts(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "fixture.db"
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 connection.execute(
                     "CREATE TABLE admin_users (id INTEGER PRIMARY KEY, username TEXT, "
                     "email TEXT, password_hash TEXT, session_token TEXT UNIQUE, "
@@ -30,7 +31,7 @@ class PasswordResetTests(unittest.TestCase):
                 input="yes\n", text=True, capture_output=True, check=True,
             )
             self.assertIn("Password reset successful", response.stdout)
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection, connection:
                 first = connection.execute(
                     "SELECT password_hash, session_token, session_expires_at, "
                     "password_reset_token, password_reset_expiry FROM admin_users WHERE id=1"
