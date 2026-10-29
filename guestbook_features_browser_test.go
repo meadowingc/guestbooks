@@ -100,6 +100,58 @@ func clickGuestbookSubmit(page *rod.Page) {
 	page.MustElement("#guestbooks___guestbook-form input[type='submit'], #guestbooks___guestbook-form button[type='submit']").MustClick()
 }
 
+func TestGuestbookTitleBrowser(t *testing.T) {
+	user, book := featureFixture(t)
+	page, base := featureBrowser(t)
+	editURL := base + fmt.Sprintf("/admin/guestbook/%d/edit", book.ID)
+	publicURL := base + fmt.Sprintf("/guestbook/%d", book.ID)
+	title := `Vinny's "visitors" & ありがとう </title><script>window.titleExecuted=true</script><img id=title-injected src=x onerror=window.titleExecuted=true>`
+	page.MustSetCookies(&proto.NetworkCookieParam{Name: string(AdminTokenCookieName), Value: user.SessionToken, URL: base})
+	page.MustNavigate(editURL).MustWaitLoad()
+	page.MustElement("#title").MustInput(title)
+	submitBrowserForm(page, "#guestbook-edit-form")
+	page.MustWaitLoad()
+	if page.MustElement("#title").MustProperty("value").Str() != title {
+		t.Fatal("custom title did not survive saving and reopening settings")
+	}
+	page.MustNavigate(publicURL)
+	waitForGuestbook(page)
+	if page.MustElement("#title").MustProperty("textContent").Str() != title ||
+		page.MustEval(`() => document.title`).Str() != title ||
+		page.MustHas("#title-injected") || page.MustEval(`() => window.titleExecuted === true`).Bool() {
+		t.Fatal("custom title was not rendered as literal text")
+	}
+
+	page.MustNavigate(base + fmt.Sprintf("/admin/guestbook/%d/embed", book.ID)).MustWaitLoad()
+	snippet := page.MustElement("#iframe-code").MustProperty("textContent").Str()
+	customSite := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, "<!doctype html><body>"+snippet+"</body>")
+	}))
+	defer customSite.Close()
+	page.MustNavigate(customSite.URL).MustWaitLoad()
+	if page.MustElement("iframe").MustProperty("title").Str() != title ||
+		page.MustHas("#title-injected") || page.MustEval(`() => window.titleExecuted === true`).Bool() {
+		t.Fatal("copied iframe title was not preserved as a literal attribute")
+	}
+	frame := page.MustElement("iframe").MustFrame()
+	if frame.MustElement("#title").MustProperty("textContent").Str() != title ||
+		frame.MustEval(`() => window.titleExecuted === true`).Bool() {
+		t.Fatal("iframe heading was not rendered as literal text")
+	}
+
+	page.MustNavigate(editURL).MustWaitLoad()
+	page.MustElement("#title").MustSelectAllText().MustInput("")
+	submitBrowserForm(page, "#guestbook-edit-form")
+	page.MustWaitLoad()
+	page.MustNavigate(publicURL)
+	waitForGuestbook(page)
+	if page.MustElement("#title").MustText() != "Guestbook for "+book.WebsiteURL ||
+		page.MustEval(`() => document.title`).Str() != "Guestbook - "+book.WebsiteURL {
+		t.Fatal("clearing the title did not restore the defaults")
+	}
+}
+
 func TestSubmissionFeedbackBrowser(t *testing.T) {
 	for _, moderated := range []bool{false, true} {
 		t.Run(fmt.Sprintf("moderated=%v", moderated), func(t *testing.T) {

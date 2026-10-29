@@ -12,6 +12,7 @@ import (
 type Guestbook struct {
 	gorm.Model
 	WebsiteURL        string
+	Title             string     `gorm:"default:''" json:"-"`
 	AdminUserID       uint       `gorm:"index"`
 	RequiresApproval  bool       `gorm:"default:false"`
 	PowEnabled        bool       `gorm:"default:false"`

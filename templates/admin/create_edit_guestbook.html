@@ -33,6 +33,18 @@
             </div>
 
             <div class="form-group">
+                <label for="title">Guestbook title (optional)</label>
+                <input type="text" id="title" name="title" aria-describedby="title-help"
+                    placeholder="Guestbook for {{if $isEditing}}{{.Data.WebsiteURL}}{{else}}https://yourwebsite.com{{end}}"
+                    {{if $isEditing}}value="{{.Data.Title}}"{{end}}>
+                <div id="title-help" class="form-hint">
+                    Plain text for the page heading and browser tab; HTML is not supported.
+                    Leave blank to use the default title based on your website URL.
+                    Hosted pages and iframe embeds update automatically.
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label style="display: flex; align-items: center; cursor: pointer;">
                     <input type="checkbox" id="requiresApproval" name="requiresApproval" 
                         {{if and $isEditing .Data.RequiresApproval}}checked{{end}}>

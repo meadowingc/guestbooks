@@ -32,6 +32,12 @@ func readGuestbookOptions(r *http.Request, guestbook *Guestbook) error {
 		return errors.New("invalid guestbook settings form")
 	}
 	// Older forms must not reset settings they do not contain.
+	if r.PostForm.Has("title") {
+		guestbook.Title = strings.TrimSpace(r.PostForm.Get("title"))
+	}
+	if !utf8.ValidString(guestbook.Title) {
+		return errors.New("guestbook title must be valid UTF-8")
+	}
 	if r.PostForm.Has("dateFormat") {
 		guestbook.DateFormat = DateFormat(r.PostForm.Get("dateFormat"))
 	}

@@ -106,7 +106,7 @@ func TestGuestbookSettingsMigration(t *testing.T) {
 	if err := migrationDB.First(&message, 1).Error; err != nil {
 		t.Fatal(err)
 	}
-	if book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || book.DateFormat != DateFormatBrowser ||
+	if book.Title != "" || book.CollectEmail || book.SubmissionAction != SubmissionUnchanged || book.DateFormat != DateFormatBrowser ||
 		book.DateFormatPattern != "" || !book.RequiresApproval {
 		t.Fatalf("migration changed legacy behavior: %+v", book)
 	}
@@ -117,7 +117,7 @@ func TestGuestbookSettingsMigration(t *testing.T) {
 	if err := migrationDB.Create(&fresh).Error; err != nil {
 		t.Fatal(err)
 	}
-	if fresh.CollectEmail || fresh.SubmissionAction != SubmissionUnchanged || fresh.DateFormat != DateFormatBrowser ||
+	if fresh.Title != "" || fresh.CollectEmail || fresh.SubmissionAction != SubmissionUnchanged || fresh.DateFormat != DateFormatBrowser ||
 		fresh.DateFormatPattern != "" {
 		t.Fatal("new guestbooks must also opt out")
 	}
@@ -140,6 +140,7 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 		{"missing label", "emailFieldLabel", " ", false},
 		{"missing confirmation", "submissionMessage", " ", false},
 		{"invalid utf8", "submissionMessage", string([]byte{0xff}), false},
+		{"invalid title utf8", "title", string([]byte{0xff}), false},
 		{"unknown action", "submissionAction", "something-else", false},
 		{"browser date format", "dateFormat", "", true},
 		{"removed ISO mode", "dateFormat", "iso", false},
@@ -197,6 +198,74 @@ func TestGuestbookSettingsValidation(t *testing.T) {
 	}
 	if created.SubmissionMessage != "Danke!" || !created.CollectEmail || created.DateFormat != DateFormatCustom {
 		t.Fatal("create handler did not save the settings")
+	}
+}
+
+func TestGuestbookTitleSettings(t *testing.T) {
+	user, book := featureFixture(t)
+	router := initRouter()
+	checkTitle := func(t *testing.T) {
+		t.Helper()
+		heading, pageTitle := book.Title, book.Title
+		if heading == "" {
+			heading = "Guestbook for " + book.WebsiteURL
+			pageTitle = "Guestbook - " + book.WebsiteURL
+		}
+		response := featureRequest(router, "GET", fmt.Sprintf("/guestbook/%d", book.ID), nil, nil, false)
+		requireStatus(t, response, 200)
+		if !strings.Contains(response.Body.String(), `<h1 id="title">`+html.EscapeString(heading)+`</h1>`) ||
+			!strings.Contains(response.Body.String(), "<title>"+html.EscapeString(pageTitle)+"</title>") {
+			t.Fatalf("public title missing or not escaped: heading=%q, page title=%q", heading, pageTitle)
+		}
+		response = featureRequest(router, "GET", fmt.Sprintf("/admin/guestbook/%d/edit", book.ID), nil, &user, false)
+		requireStatus(t, response, 200)
+		if !strings.Contains(response.Body.String(), `id="title" name="title"`) ||
+			!strings.Contains(response.Body.String(), `value="`+html.EscapeString(book.Title)+`"`) {
+			t.Fatal("saved title missing or not escaped in settings")
+		}
+		response = featureRequest(router, "GET", fmt.Sprintf("/admin/guestbook/%d/embed", book.ID), nil, &user, false)
+		requireStatus(t, response, 200)
+		if !strings.Contains(response.Body.String(), `title="`+html.EscapeString(html.EscapeString(heading))+`"`) {
+			t.Fatal("iframe title must remain escaped after copying the code")
+		}
+	}
+	checkTitle(t)
+
+	title := `Vinny's "visitors" & ありがとう </title><script>alert(1)</script><img src=x onerror=alert(1)>`
+	form := url.Values{"websiteURL": {book.WebsiteURL}, "title": {" \t" + title + " \t"}}
+	requireStatus(t, featureRequest(router, "POST", "/admin/guestbook/new", form, &user, false), 303)
+	var created Guestbook
+	if err := db.Where("admin_user_id = ?", user.ID).Last(&created).Error; err != nil {
+		t.Fatal(err)
+	}
+	book = created
+	if book.Title != title {
+		t.Fatalf("created title = %q, want %q", book.Title, title)
+	}
+	checkTitle(t)
+
+	for _, test := range []struct {
+		name string
+		form url.Values
+		want string
+	}{
+		{"older form preserves title", url.Values{}, title},
+		{"edit title", url.Values{"title": {"Welcome, friends!"}}, "Welcome, friends!"},
+		{"empty restores default", url.Values{"title": {""}}, ""},
+		{"set title again", url.Values{"title": {title}}, title},
+		{"whitespace restores default", url.Values{"title": {" \t "}}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			test.form.Set("websiteURL", book.WebsiteURL)
+			requireStatus(t, featureRequest(router, "POST", fmt.Sprintf("/admin/guestbook/%d/edit", book.ID), test.form, &user, false), 303)
+			if err := db.First(&book, book.ID).Error; err != nil {
+				t.Fatal(err)
+			}
+			if book.Title != test.want {
+				t.Fatalf("saved title = %q, want %q", book.Title, test.want)
+			}
+			checkTitle(t)
+		})
 	}
 }
 

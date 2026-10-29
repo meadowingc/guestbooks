@@ -43,6 +43,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 
 	type GuestbookPageData struct {
 		WebsiteURL        string
+		Title             string
 		CustomPageCSS     string
 		PowEnabled        bool
 		SubmissionAction  SubmissionAction
@@ -54,7 +55,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 
 	var guestbookData GuestbookPageData
 	result := activeGuestbooksQuery(db.WithContext(r.Context())).
-		Select("website_url, custom_page_css, pow_enabled, submission_action, submission_message, collect_email, email_field_label, email_field_help").
+		Select("website_url, title, custom_page_css, pow_enabled, submission_action, submission_message, collect_email, email_field_label, email_field_help").
 		Where("id = ?", guestbookID).
 		Scan(&guestbookData)
 
@@ -90,6 +91,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		templateCommon
 		ID                   string
 		WebsiteURL           string
+		Title                string
 		CustomPageCSS        string
 		SelectedBuiltInTheme string
 		PowEnabled           bool
@@ -102,6 +104,7 @@ func GuestbookPage(w http.ResponseWriter, r *http.Request) {
 		templateCommon:       currentTemplateCommon(),
 		ID:                   guestbookID,
 		WebsiteURL:           guestbookData.WebsiteURL,
+		Title:                guestbookData.Title,
 		CustomPageCSS:        guestbookData.CustomPageCSS,
 		SelectedBuiltInTheme: selectedBuiltInTheme,
 		PowEnabled:           guestbookData.PowEnabled,

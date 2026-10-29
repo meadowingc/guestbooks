@@ -420,14 +420,22 @@ func AdminEmbedGuestbook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	iframeTitle := guestbook.Title
+	if iframeTitle == "" {
+		iframeTitle = "Guestbook for " + guestbook.WebsiteURL
+	}
+
 	data := struct {
-		Guestbook      Guestbook
-		PublicHostUrl  string
-		EmailFieldHTML string
+		Guestbook       Guestbook
+		PublicHostUrl   string
+		EmailFieldHTML  string
+		IframeTitleHTML string
 	}{
 		Guestbook:      guestbook,
 		PublicHostUrl:  hostUrl,
 		EmailFieldHTML: emailField.String(),
+		// Escape for the copied HTML as well as the admin page containing it.
+		IframeTitleHTML: template.HTMLEscapeString(iframeTitle),
 	}
 
 	renderAdminTemplate(w, r, "embed_guestbook", data)
@@ -561,6 +569,7 @@ func AdminUpdateGuestbook(w http.ResponseWriter, r *http.Request) {
 	result = db.Model(&Guestbook{}).Where("id = ? AND admin_user_id = ?", guestbook.ID, currentUser.ID).
 		Updates(map[string]any{
 			"website_url": guestbook.WebsiteURL, "requires_approval": guestbook.RequiresApproval,
+			"title":       guestbook.Title,
 			"pow_enabled": guestbook.PowEnabled, "challenge_question": guestbook.ChallengeQuestion,
 			"challenge_hint": guestbook.ChallengeHint, "challenge_failed_message": guestbook.ChallengeFailedMessage,
 			"challenge_answer": guestbook.ChallengeAnswer, "custom_page_css": guestbook.CustomPageCSS,
