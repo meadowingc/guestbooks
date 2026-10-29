@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,9 +21,24 @@ import (
 
 var browser *rod.Browser
 
+func testBrowserLauncher() *launcher.Launcher {
+	// Rod's default Chromium 128 intermittently hangs on page runtime commands.
+	revisions := map[string]int{
+		"linux/amd64":   1729789,
+		"darwin/amd64":  1729763,
+		"darwin/arm64":  1729768,
+		"windows/amd64": 1729652,
+	}
+	instance := launcher.New().Headless(true)
+	if revision, ok := revisions[runtime.GOOS+"/"+runtime.GOARCH]; ok {
+		instance.Revision(revision)
+	}
+	return instance
+}
+
 func init() {
 	startBrowserTests = func() {
-		l := launcher.New().Headless(true).MustLaunch()
+		l := testBrowserLauncher().MustLaunch()
 		browser = rod.New().ControlURL(l).MustConnect()
 		requests := browser.HijackRequests()
 		requests.MustAdd("https://cdnjs.cloudflare.com/*", func(ctx *rod.Hijack) {

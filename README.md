@@ -129,10 +129,6 @@ Unit tests use temporary SQLite databases. Browser tests require Chromium
 (Rod can download its browser when first needed) and are enabled explicitly
 with `go test -tags browser ./...`. Use `-tags browser,release` for production
 behavior. `task release` also validates both build modes before building.
-For reproducible browser checks, explicitly select an installed Chrome or
-Chromium binary. Both complete build-mode suites are validated with Chrome
-for Testing 145.0.7632.6. Rod's older automatic Chromium 128 fallback showed
-intermittent renderer hangs in our environment; those hangs are not resolved.
 
 ```bash
 CHROME=/path/to/chrome

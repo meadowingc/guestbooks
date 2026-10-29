@@ -14,14 +14,13 @@ import (
 	"guestbook/constants"
 
 	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
 )
 
 func featureBrowser(t *testing.T) (*rod.Page, string) {
 	t.Helper()
 	resetTestRouter()
-	instance := rod.New().ControlURL(launcher.New().Headless(true).MustLaunch()).MustConnect()
+	instance := rod.New().ControlURL(testBrowserLauncher().MustLaunch()).MustConnect()
 	t.Cleanup(instance.MustClose)
 	page := instance.MustPage().MustActivate().Timeout(30 * time.Second)
 	page = page.WithPanic(func(value interface{}) {
